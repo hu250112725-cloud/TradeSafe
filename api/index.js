@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { q } from "../lib/db.js";
 import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
+import { sendMail, mailCodigo, mailAviso } from "../lib/mail.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -47,9 +48,22 @@ async function authAny(req, res, next) {
   }
 }
 
+const needsEmail = (req, res, next) => req.me.email_verified !== false ? next()
+  : err(res, "email_unverified", 403, "Confirma tu email para poder operar (revisa tu bandeja de entrada)");
+
 const staff = (req, res, next) => ["moderator", "admin"].includes(req.me.role) ? next() : err(res, "forbidden", 403, "Solo staff");
 const admin = (req, res, next) => req.me.role === "admin" ? next() : err(res, "forbidden", 403, "Solo administración");
 const token = (u) => jwt.sign({ sub: u.id, role: u.role }, SECRET, { expiresIn: "7d" });
+async function notify(userIds, tipo, code) {
+  try {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (!ids.length) return;
+    const r = await q(`SELECT email FROM users WHERE id = ANY($1) AND status='active' AND email NOT LIKE 'borrado-%'`, [ids]);
+    const { subject, html } = mailAviso(tipo, code);
+    await Promise.allSettled(r.rows.map((u) => sendMail(u.email, subject, html)));
+  } catch { /* los avisos nunca deben romper la acción principal */ }
+}
+
 const audit = (actorId, action, target, reason) =>
   q("INSERT INTO audit (actor_id, action, target, reason) VALUES ($1,$2,$3,$4)", [actorId, action, target ?? null, reason ?? null]);
 
@@ -91,14 +105,49 @@ app.post("/api/setup", async (req, res) => {
   }
 });
 
+const codigoEmail = () => String(Math.floor(100000 + Math.random() * 900000));
+
+async function iniciarVerifEmail(u) {
+  const code = codigoEmail();
+  const { subject, html } = mailCodigo(code);
+  const envio = await sendMail(u.email, subject, html);
+  if (envio.ok) {
+    await q(`UPDATE users SET email_verified=false, email_code=$2, email_code_at=now() WHERE id=$1`, [u.id, code]);
+  } else {
+    // Sin servicio de correo operativo no bloqueamos a nadie: cuenta utilizable.
+    await q(`UPDATE users SET email_verified=true WHERE id=$1`, [u.id]);
+    await audit(null, "email.fail_open", u.id, envio.reason);
+  }
+  return envio.ok;
+}
+
 app.post("/api/register", async (req, res) => {
   try {
     const u = await createUser(req.body, "user", false, fp(req));
-    res.status(201).json({ token: token(u) });
+    const enviado = await iniciarVerifEmail(u);
+    res.status(201).json({ token: token(u), emailSent: enviado });
   } catch (e) {
     if (e && e.code === "23505") return err(res, "conflict", 409, "Email o nombre ya en uso");
     return err(res, "validation_error", 422, typeof e === "string" ? e : "Datos inválidos");
   }
+});
+
+app.post("/api/email/verify", authAny, async (req, res) => {
+  if (req.me.email_verified) return err(res, "conflict", 409, "Tu email ya está confirmado");
+  const code = String(req.body?.code || "").trim();
+  const okCode = req.me.email_code && code === req.me.email_code
+    && new Date(req.me.email_code_at) > Date.now() - 24 * 3600000;
+  if (!okCode) return err(res, "validation_error", 422, "Código incorrecto o caducado");
+  await q(`UPDATE users SET email_verified=true, email_code=NULL WHERE id=$1`, [req.me.id]);
+  res.json({ ok: true });
+});
+
+app.post("/api/email/resend", authAny, async (req, res) => {
+  if (req.me.email_verified) return err(res, "conflict", 409, "Tu email ya está confirmado");
+  if (req.me.email_code_at && new Date(req.me.email_code_at) > Date.now() - 120000)
+    return err(res, "too_many_attempts", 429, "Espera 2 minutos antes de pedir otro código");
+  await iniciarVerifEmail(req.me);
+  res.json({ ok: true });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -230,7 +279,7 @@ app.get("/api/state", authAny, async (req, res) => {
   const auditR = me.role === "admin" ? await q(`SELECT * FROM audit ORDER BY id DESC LIMIT 200`) : { rows: [] };
 
   res.json({
-    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code },
+    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code, emailVerified: me.email_verified !== false },
     users: usersR.rows.map((u) => ({
       id: u.id, displayName: u.display_name, trainerName: u.trainer_name, role: u.role, status: u.status,
       verified: u.verified, createdAt: u.created_at,
@@ -262,7 +311,7 @@ app.get("/api/state", authAny, async (req, res) => {
 });
 
 /* ---------- Ofertas ---------- */
-app.post("/api/offers", auth, async (req, res) => {
+app.post("/api/offers", auth, needsEmail, async (req, res) => {
   const b = req.body || {};
   if (!b.species) return err(res, "validation_error", 422, "Falta la especie");
   if (!b.wants || b.wants.length < 3) return err(res, "validation_error", 422, "Describe qué buscas a cambio");
@@ -297,7 +346,7 @@ async function setTrade(t, patch, state, eventBy, eventTo) {
   await q(`UPDATE trades SET flags=$2, state=$3, events=$4 WHERE id=$1`, [t.id, flags, state ?? t.state, JSON.stringify(events)]);
 }
 
-app.post("/api/trades", auth, async (req, res) => {
+app.post("/api/trades", auth, needsEmail, async (req, res) => {
   const { offerId, give } = req.body || {};
   if (!give || give.trim().length < 3) return err(res, "validation_error", 422, "Describe qué ofreces tú");
   if (hasMoney(give)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
@@ -310,10 +359,11 @@ app.post("/api/trades", auth, async (req, res) => {
     [shortCode(), offerId, req.me.id, o.rows[0].owner_id, give.trim(),
      JSON.stringify([{ at: new Date().toISOString(), by: req.me.id, to: "proposal" }])]
   );
+  await notify([o.rows[0].owner_id], "proposal", null);
   res.status(201).json({ id: r.rows[0].id });
 });
 
-app.post("/api/trades/:id/action", auth, async (req, res) => {
+app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
   const t = await getTrade(req.params.id);
   if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
   const soyA = t.a_id === req.me.id;
@@ -326,7 +376,8 @@ app.post("/api/trades/:id/action", auth, async (req, res) => {
   switch (action) {
     case "accept":
       if (t.state !== "proposal" || soyA) return invalid();
-      await setTrade(t, {}, "contract", me, "contract"); break;
+      await setTrade(t, {}, "contract", me, "contract");
+      await notify([t.a_id], "accepted", null); break;
     case "decline":
     case "cancel":
       if (!["proposal", "contract"].includes(t.state)) return invalid();
@@ -335,7 +386,8 @@ app.post("/api/trades/:id/action", auth, async (req, res) => {
       if (t.state !== "contract") return invalid();
       const p = soyA ? { signedA: true } : { signedB: true };
       const both = (soyA ? f.signedB : f.signedA) === true;
-      await setTrade(t, p, both ? "pre_proof" : "contract", me, both ? "pre_proof" : "signed"); break;
+      await setTrade(t, p, both ? "pre_proof" : "contract", me, both ? "pre_proof" : "signed");
+      await notify(both ? [t.a_id, t.b_id] : [soyA ? t.b_id : t.a_id], both ? "pre_proof" : "sign", null); break;
     }
     case "proof": {
       if (t.state !== "pre_proof") return invalid();
@@ -343,13 +395,15 @@ app.post("/api/trades/:id/action", auth, async (req, res) => {
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura con el código visible"); }
       const p = soyA ? { proofA: true } : { proofB: true };
       const both = (soyA ? f.proofB : f.proofA) === true;
-      await setTrade(t, p, both ? "in_progress" : "pre_proof", me, both ? "in_progress" : "proof_pre"); break;
+      await setTrade(t, p, both ? "in_progress" : "pre_proof", me, both ? "in_progress" : "proof_pre");
+      if (both) await notify([t.a_id, t.b_id], "in_progress", t.code); break;
     }
     case "delivered": {
       if (t.state !== "in_progress") return invalid();
       const p = soyA ? { deliveredA: true } : { deliveredB: true };
       const both = (soyA ? f.deliveredB : f.deliveredA) === true;
-      await setTrade(t, p, both ? "post_proof" : "in_progress", me, both ? "post_proof" : "delivered"); break;
+      await setTrade(t, p, both ? "post_proof" : "in_progress", me, both ? "post_proof" : "delivered");
+      if (both) await notify([t.a_id, t.b_id], "post_proof", t.code); break;
     }
     case "confirm": {
       if (t.state !== "post_proof") return invalid();
@@ -357,7 +411,8 @@ app.post("/api/trades/:id/action", auth, async (req, res) => {
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura final"); }
       const p = soyA ? { confirmedA: true } : { confirmedB: true };
       const both = (soyA ? f.confirmedB : f.confirmedA) === true;
-      await setTrade(t, p, both ? "closed" : "post_proof", me, both ? "closed" : "confirmed"); break;
+      await setTrade(t, p, both ? "closed" : "post_proof", me, both ? "closed" : "confirmed");
+      if (both) await notify([t.a_id, t.b_id], "closed", t.code); break;
     }
     case "rate": {
       if (t.state !== "closed") return invalid();
@@ -371,7 +426,7 @@ app.post("/api/trades/:id/action", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/trades/:id/message", auth, async (req, res) => {
+app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   const t = await getTrade(req.params.id);
   if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
   if (!["in_progress", "post_proof"].includes(t.state)) return err(res, "state_invalid", 409, "El chat se abre durante el intercambio");
@@ -390,7 +445,7 @@ app.post("/api/trades/:id/message", auth, async (req, res) => {
 });
 
 /* ---------- Disputas ---------- */
-app.post("/api/disputes", auth, async (req, res) => {
+app.post("/api/disputes", auth, needsEmail, async (req, res) => {
   const { tradeId, claim } = req.body || {};
   if (!claim || claim.trim().length < 20) return err(res, "validation_error", 422, "Describe lo ocurrido (mínimo 20 caracteres)");
   const t = await getTrade(tradeId);
@@ -399,6 +454,7 @@ app.post("/api/disputes", auth, async (req, res) => {
   await q(`INSERT INTO disputes (trade_id, reporter_id, accused_id, claim, deadline)
            VALUES ($1,$2,$3,$4, now() + interval '72 hours')`, [t.id, req.me.id, accused, claim.trim()]);
   await setTrade(t, {}, "disputed", req.me.id, "disputed");
+  await notify([accused], "disputed", t.code);
   res.status(201).json({ ok: true });
 });
 
@@ -428,6 +484,7 @@ app.post("/api/disputes/:id/decide", auth, staff, async (req, res) => {
       [d.accused_id, d.id, level, summary.trim()]);
     if (level === "ban") await q(`UPDATE users SET status='suspended' WHERE id=$1`, [d.accused_id]);
     await audit(req.me.id, "dispute.sanction." + level, d.id, summary.trim());
+    await notify([d.accused_id], "sanction", null);
   } else {
     await q(`UPDATE disputes SET status='resolved_no_fault', decided_by=$2 WHERE id=$1`, [d.id, req.me.id]);
     const t = await getTrade(d.trade_id);
@@ -463,9 +520,11 @@ app.post("/api/sanctions/:id/appeal/decide", auth, staff, async (req, res) => {
     await q(`UPDATE sanctions SET appeal_status='overturned', appeal_decided_by=$2, expires=now() WHERE id=$1`, [sa.id, req.me.id]);
     if (sa.level === "ban") await q(`UPDATE users SET status='active' WHERE id=$1 AND status='suspended'`, [sa.user_id]);
     await audit(req.me.id, "sanction.appeal.overturned", sa.id, "Sanción anulada en apelación");
+    await notify([sa.user_id], "appeal", null);
   } else {
     await q(`UPDATE sanctions SET appeal_status='upheld', appeal_decided_by=$2 WHERE id=$1`, [sa.id, req.me.id]);
     await audit(req.me.id, "sanction.appeal.upheld", sa.id, "Sanción confirmada en apelación");
+    await notify([sa.user_id], "appeal", null);
   }
   res.json({ ok: true });
 });

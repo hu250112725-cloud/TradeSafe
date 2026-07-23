@@ -88,6 +88,31 @@ function pickImage() {
   });
 }
 
+/* Banner para confirmar el email con el código de 6 dígitos */
+function EmailBanner({ me, refresh }) {
+  const [code, setCode] = useState("");
+  const [hecho, setHecho] = useState(false);
+  const { run, busy, err } = useRun(refresh);
+  if (me.emailVerified && !hecho) return null;
+  if (hecho) return <div style={{ marginBottom: 14 }}><Aviso tipo="verde">{tx().emailListo}</Aviso></div>;
+  return (
+    <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().emailTitulo}</div>
+      <p className="txt-s suave">{tx().emailIntro}</p>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <input className="chat-input mono" style={{ flex: "1 1 120px", letterSpacing: 4, textAlign: "center" }}
+          value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          inputMode="numeric" placeholder={tx().phCodigoEmail} />
+        <button className="btn mini" disabled={busy || code.length !== 6}
+          onClick={() => run(async () => { await api.verifyEmail(code); setHecho(true); })}>{tx().btnConfirmarEmail}</button>
+        <button className="btn mini secundario" disabled={busy}
+          onClick={() => run(() => api.resendEmail())}>{tx().btnReenviar}</button>
+      </div>
+      {err && <div className="mt-10"><Aviso tipo="lacre">{err}</Aviso></div>}
+    </div>
+  );
+}
+
 /* Miniaturas de pruebas subidas */
 function Pruebas({ trade, kind, me }) {
   const list = (trade.proofs || []).filter((p) => p.kind === kind);
@@ -905,6 +930,7 @@ export default function App() {
       </header>
 
       <main className="content">
+        {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
         {me && me.status === "active" && pendientes > 0 && tab !== "trades" && !verInfractores && phase === "listo" && (
           <button className="ficha" style={{ marginBottom: 14, borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }} onClick={() => setTab("trades")}>
             <b style={{ color: "var(--lacre)" }}>{tx().pendientes(pendientes)}</b>

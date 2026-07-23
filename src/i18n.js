@@ -168,6 +168,13 @@ const es = {
   // Notificaciones
   pendientes: (n) => `⚑ Tienes ${n} ${n === 1 ? "acción pendiente" : "acciones pendientes"}`,
   irTrades: " — toca para ir a tus trades",
+  // Verificación de email
+  emailTitulo: "Confirma tu email",
+  emailIntro: "Te enviamos un código de 6 dígitos. Escríbelo aquí para poder publicar e intercambiar:",
+  phCodigoEmail: "123456",
+  btnConfirmarEmail: "Confirmar",
+  btnReenviar: "Reenviar código",
+  emailListo: "✓ Email confirmado. ¡Ya puedes operar!",
 };
 
 const en = {
@@ -313,6 +320,12 @@ const en = {
   sinAudit: "No actions recorded.", sistema: "system",
   pendientes: (n) => `⚑ You have ${n} pending ${n === 1 ? "action" : "actions"}`,
   irTrades: " — tap to open your trades",
+  emailTitulo: "Confirm your email",
+  emailIntro: "We sent you a 6-digit code. Enter it here to be able to post and trade:",
+  phCodigoEmail: "123456",
+  btnConfirmarEmail: "Confirm",
+  btnReenviar: "Resend code",
+  emailListo: "✓ Email confirmed. You can trade now!",
 };
 
 // Mensajes del servidor (llegan en español) → inglés
@@ -376,6 +389,10 @@ const errEN = {
   "Estado inválido": "Invalid status",
   "No puedes suspenderte a ti mismo": "You can't suspend yourself",
   "Error de conexión con el servidor": "Connection error with the server",
+  "Confirma tu email para poder operar (revisa tu bandeja de entrada)": "Confirm your email to be able to trade (check your inbox)",
+  "Tu email ya está confirmado": "Your email is already confirmed",
+  "Código incorrecto o caducado": "Incorrect or expired code",
+  "Espera 2 minutos antes de pedir otro código": "Wait 2 minutes before requesting another code",
   "Error interno del servidor": "Internal server error",
   "El servidor no tiene base de datos configurada (variable DATABASE_URL en Vercel).": "The server has no database configured (DATABASE_URL variable in Vercel).",
 };
