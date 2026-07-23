@@ -1,6 +1,7 @@
 // TradeSafe API — Express sobre funciones serverless de Vercel.
 // Variables de entorno necesarias: DATABASE_URL, JWT_SECRET.
 import express from "express";
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { q } from "../lib/db.js";
@@ -28,6 +29,24 @@ async function auth(req, res, next) {
     return err(res, "unauthorized", 401, "Sesión caducada, entra de nuevo");
   }
 }
+const fp = (req) => crypto.createHash("sha256")
+  .update(String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "") + SECRET).digest("hex").slice(0, 24);
+
+// Como auth, pero permite cuentas suspendidas (solo para ver su estado y apelar)
+async function authAny(req, res, next) {
+  const h = req.headers.authorization || "";
+  if (!h.startsWith("Bearer ")) return err(res, "unauthorized", 401, "Sesión requerida");
+  try {
+    const p = jwt.verify(h.slice(7), SECRET);
+    const r = await q("SELECT * FROM users WHERE id=$1", [p.sub]);
+    if (!r.rowCount || !["active", "suspended"].includes(r.rows[0].status)) return err(res, "unauthorized", 401, "Cuenta no disponible");
+    req.me = r.rows[0];
+    next();
+  } catch {
+    return err(res, "unauthorized", 401, "Sesión caducada, entra de nuevo");
+  }
+}
+
 const staff = (req, res, next) => ["moderator", "admin"].includes(req.me.role) ? next() : err(res, "forbidden", 403, "Solo staff");
 const admin = (req, res, next) => req.me.role === "admin" ? next() : err(res, "forbidden", 403, "Solo administración");
 const token = (u) => jwt.sign({ sub: u.id, role: u.role }, SECRET, { expiresIn: "7d" });
@@ -40,7 +59,7 @@ app.get("/api/bootstrap", async (_req, res) => {
   res.json({ hasUsers: r.rows[0].n > 0 });
 });
 
-async function createUser({ name, trainer, email, pass, friendCode }, role, verified) {
+async function createUser({ name, trainer, email, pass, friendCode }, role, verified, signupFp) {
   if (!name || name.trim().length < 3) throw "El nombre público necesita al menos 3 caracteres";
   if (!trainer || !trainer.trim()) throw "Falta tu nombre de entrenador de HOME";
   if (!email || !/.+@.+\..+/.test(email)) throw "Email no válido";
@@ -52,9 +71,9 @@ async function createUser({ name, trainer, email, pass, friendCode }, role, veri
     : limpio;
   const hash = await bcrypt.hash(pass, 10);
   const r = await q(
-    `INSERT INTO users (email, pass_hash, display_name, trainer_name, role, verified, friend_code)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [email.trim().toLowerCase(), hash, name.trim(), trainer.trim(), role, verified, fc]
+    `INSERT INTO users (email, pass_hash, display_name, trainer_name, role, verified, friend_code, signup_fp)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [email.trim().toLowerCase(), hash, name.trim(), trainer.trim(), role, verified, fc, signupFp ?? null]
   );
   return r.rows[0];
 }
@@ -63,7 +82,7 @@ app.post("/api/setup", async (req, res) => {
   const n = await q("SELECT count(*)::int AS n FROM users");
   if (n.rows[0].n > 0) return err(res, "conflict", 409, "La instancia ya está configurada");
   try {
-    const u = await createUser(req.body, "admin", true);
+    const u = await createUser(req.body, "admin", true, fp(req));
     await audit(u.id, "setup.admin_created", u.id, "Configuración inicial");
     res.status(201).json({ token: token(u) });
   } catch (e) {
@@ -74,7 +93,7 @@ app.post("/api/setup", async (req, res) => {
 
 app.post("/api/register", async (req, res) => {
   try {
-    const u = await createUser(req.body, "user", false);
+    const u = await createUser(req.body, "user", false, fp(req));
     res.status(201).json({ token: token(u) });
   } catch (e) {
     if (e && e.code === "23505") return err(res, "conflict", 409, "Email o nombre ya en uso");
@@ -84,12 +103,22 @@ app.post("/api/register", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   const { email, pass } = req.body || {};
-  const r = await q("SELECT * FROM users WHERE email=$1", [String(email || "").trim().toLowerCase()]);
-  if (!r.rowCount || !(await bcrypt.compare(pass || "", r.rows[0].pass_hash)))
+  const mail = String(email || "").trim().toLowerCase();
+  const huella = fp(req);
+  const intentos = await q(
+    `SELECT count(*)::int AS n FROM login_attempts WHERE (email=$1 OR fp=$2) AND at > now() - interval '15 minutes'`,
+    [mail, huella]);
+  if (intentos.rows[0].n >= 8)
+    return err(res, "too_many_attempts", 429, "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.");
+  const r = await q("SELECT * FROM users WHERE email=$1", [mail]);
+  if (!r.rowCount || !(await bcrypt.compare(pass || "", r.rows[0].pass_hash))) {
+    await q(`INSERT INTO login_attempts (email, fp) VALUES ($1,$2)`, [mail, huella]);
+    await q(`DELETE FROM login_attempts WHERE at < now() - interval '1 day'`);
     return err(res, "unauthorized", 401, "Credenciales incorrectas");
+  }
   const u = r.rows[0];
-  if (u.status === "suspended") return err(res, "forbidden", 403, "Cuenta suspendida por moderación");
   if (u.status === "deleted") return err(res, "unauthorized", 401, "Credenciales incorrectas");
+  await q(`DELETE FROM login_attempts WHERE email=$1`, [mail]);
   res.json({ token: token(u) });
 });
 
@@ -144,8 +173,20 @@ app.post("/api/verification", auth, async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+/* ---------- 2. Caducidad automática de intercambios inactivos ---------- */
+const EXPIRE_EVENT = `events || jsonb_build_array(jsonb_build_object('at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'by', null, 'to', 'expired'))`;
+async function expireStale() {
+  await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
+           WHERE state IN ('proposal','contract','pre_proof')
+           AND (events->-1->>'at')::timestamptz < now() - interval '7 days'`);
+  await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
+           WHERE state IN ('in_progress','post_proof')
+           AND (events->-1->>'at')::timestamptz < now() - interval '21 days'`);
+}
+
 /* ---------- Estado (una sola llamada trae todo lo visible) ---------- */
-app.get("/api/state", auth, async (req, res) => {
+app.get("/api/state", authAny, async (req, res) => {
+  await expireStale();
   const me = req.me;
   const esStaff = ["moderator", "admin"].includes(me.role);
 
@@ -158,7 +199,9 @@ app.get("/api/state", auth, async (req, res) => {
       (SELECT round(avg(CASE WHEN t.a_id=u.id THEN (t.flags->>'ratingForA')::numeric ELSE (t.flags->>'ratingForB')::numeric END),1)
          FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
-      (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n
+      (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
+      (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
+      (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
 
   const offersR = await q(`SELECT * FROM offers WHERE status='active' OR owner_id=$1 ORDER BY created_at DESC LIMIT 200`, [me.id]);
@@ -181,17 +224,19 @@ app.get("/api/state", auth, async (req, res) => {
     ? await q(`SELECT * FROM disputes ORDER BY created_at DESC LIMIT 200`)
     : await q(`SELECT * FROM disputes WHERE reporter_id=$1 OR accused_id=$1 ORDER BY created_at DESC`, [me.id]);
 
-  const sanctionsR = await q(`SELECT * FROM sanctions WHERE expires IS NULL OR expires>now() ORDER BY created_at DESC LIMIT 200`);
+  const sanctionsR = await q(`SELECT s.*, d.decided_by AS dispute_decided_by FROM sanctions s
+    LEFT JOIN disputes d ON d.id = s.dispute_id
+    WHERE s.expires IS NULL OR s.expires>now() ORDER BY s.created_at DESC LIMIT 200`);
   const auditR = me.role === "admin" ? await q(`SELECT * FROM audit ORDER BY id DESC LIMIT 200`) : { rows: [] };
 
   res.json({
-    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code },
+    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code },
     users: usersR.rows.map((u) => ({
       id: u.id, displayName: u.display_name, trainerName: u.trainer_name, role: u.role, status: u.status,
       verified: u.verified, createdAt: u.created_at,
       trades: u.trades_done, rating: u.rating, sanctions: u.sanctions_n,
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
-      ...(esStaff ? { verifCode: u.verif_code, verifImage: u.verif_image } : {}),
+      ...(esStaff ? { verifCode: u.verif_code, verifImage: u.verif_image, dupFriend: u.dup_friend > 0, dupFp: u.dup_fp > 0 } : {}),
     })),
     offers: offersR.rows.map((o) => ({ id: o.id, ownerId: o.owner_id, status: o.status, createdAt: o.created_at, ...o.data })),
     trades: tradesR.rows.map((t) => ({
@@ -206,7 +251,12 @@ app.get("/api/state", auth, async (req, res) => {
       id: d.id, tradeId: d.trade_id, reporterId: d.reporter_id, accusedId: d.accused_id,
       claim: d.claim, defense: d.defense, status: d.status, deadline: d.deadline, at: d.created_at,
     })),
-    sanctions: sanctionsR.rows.map((s) => ({ id: s.id, userId: s.user_id, level: s.level, summary: s.summary, expires: s.expires, at: s.created_at, public: true })),
+    sanctions: sanctionsR.rows.map((s) => ({
+      id: s.id, userId: s.user_id, level: s.level, summary: s.summary, expires: s.expires, at: s.created_at, public: true,
+      appealStatus: s.appeal_status,
+      ...((esStaff || s.user_id === me.id) ? { appealText: s.appeal_text, appealedAt: s.appealed_at } : {}),
+      ...(esStaff ? { disputeDecidedBy: s.dispute_decided_by } : {}),
+    })),
     audit: auditR.rows.map((a) => ({ id: a.id, actorId: a.actor_id, action: a.action, target: a.target, reason: a.reason, at: a.created_at })),
   });
 });
@@ -387,6 +437,39 @@ app.post("/api/disputes/:id/decide", auth, staff, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- 5. Apelaciones de sanciones ---------- */
+app.post("/api/sanctions/:id/appeal", authAny, async (req, res) => {
+  const r = await q(`SELECT * FROM sanctions WHERE id=$1`, [req.params.id]);
+  if (!r.rowCount || r.rows[0].user_id !== req.me.id) return err(res, "not_found", 404, "Sanción no encontrada");
+  const sa = r.rows[0];
+  if (sa.appeal_status !== "none") return err(res, "conflict", 409, "Esta sanción ya fue apelada");
+  if (new Date(sa.created_at) < Date.now() - 60 * 86400000)
+    return err(res, "state_invalid", 409, "El plazo de apelación (60 días) ha terminado");
+  const texto = String(req.body?.text || "").trim();
+  if (texto.length < 30) return err(res, "validation_error", 422, "Explica tu apelación (mínimo 30 caracteres)");
+  await q(`UPDATE sanctions SET appeal_status='open', appeal_text=$2, appealed_at=now() WHERE id=$1`, [sa.id, texto]);
+  await audit(req.me.id, "sanction.appeal", sa.id, "Apelación presentada");
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/sanctions/:id/appeal/decide", auth, staff, async (req, res) => {
+  const r = await q(`SELECT s.*, d.decided_by AS ddb FROM sanctions s LEFT JOIN disputes d ON d.id=s.dispute_id WHERE s.id=$1`, [req.params.id]);
+  if (!r.rowCount || r.rows[0].appeal_status !== "open") return err(res, "not_found", 404, "Apelación no encontrada o ya decidida");
+  const sa = r.rows[0];
+  if (sa.ddb === req.me.id) return err(res, "forbidden", 403, "La apelación debe revisarla alguien distinto de quien sancionó (recusación)");
+  if (sa.user_id === req.me.id) return err(res, "forbidden", 403, "No puedes decidir tu propia apelación");
+  const { overturn } = req.body || {};
+  if (overturn) {
+    await q(`UPDATE sanctions SET appeal_status='overturned', appeal_decided_by=$2, expires=now() WHERE id=$1`, [sa.id, req.me.id]);
+    if (sa.level === "ban") await q(`UPDATE users SET status='active' WHERE id=$1 AND status='suspended'`, [sa.user_id]);
+    await audit(req.me.id, "sanction.appeal.overturned", sa.id, "Sanción anulada en apelación");
+  } else {
+    await q(`UPDATE sanctions SET appeal_status='upheld', appeal_decided_by=$2 WHERE id=$1`, [sa.id, req.me.id]);
+    await audit(req.me.id, "sanction.appeal.upheld", sa.id, "Sanción confirmada en apelación");
+  }
+  res.json({ ok: true });
+});
+
 /* ---------- Staff / admin ---------- */
 app.post("/api/users/:id/verify", auth, staff, async (req, res) => {
   await q(`UPDATE users SET verified=true, verif_code=NULL WHERE id=$1`, [req.params.id]);
@@ -413,13 +496,13 @@ app.post("/api/users/:id/status", auth, admin, async (req, res) => {
 });
 
 /* ---------- Mi cuenta ---------- */
-app.delete("/api/me", auth, async (req, res) => {
+app.delete("/api/me", authAny, async (req, res) => {
   await q(`UPDATE offers SET status='removed' WHERE owner_id=$1`, [req.me.id]);
   await q(`UPDATE users SET status='deleted', email='borrado-'||id, display_name='usuario-'||left(id::text,8), pass_hash='x' WHERE id=$1`, [req.me.id]);
   res.json({ ok: true });
 });
 
-app.get("/api/me/export", auth, async (req, res) => {
+app.get("/api/me/export", authAny, async (req, res) => {
   const offers = await q(`SELECT * FROM offers WHERE owner_id=$1`, [req.me.id]);
   const trades = await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1`, [req.me.id]);
   res.json({

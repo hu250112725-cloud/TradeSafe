@@ -55,6 +55,8 @@ export const exportMe = () => call("/me/export");
 export async function requestVerifCode() { const r = await call("/verification-code", { method: "POST" }); await sync(); return r.code; }
 export async function submitVerification(image) { await call("/verification", { method: "POST", body: { image } }); await sync(); }
 export const imageUrl = (id) => `/api/images/${id}?token=${encodeURIComponent(getToken() || "")}`;
+export async function appeal(sanctionId, text) { await call(`/sanctions/${sanctionId}/appeal`, { method: "POST", body: { text } }); await sync(); }
+export async function decideAppeal(sanctionId, overturn) { await call(`/sanctions/${sanctionId}/appeal/decide`, { method: "POST", body: { overturn } }); await sync(); }
 
 export const fecha = (iso) => new Date(iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
 export const userById = (id) => snap?.users.find((u) => u.id === id) ?? null;

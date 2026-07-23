@@ -207,8 +207,12 @@ function Publicar({ refresh, done }) {
 function Mercado({ me, refresh, onOffenders }) {
   const [open, setOpen] = useState(null);
   const [give, setGive] = useState("");
+  const [busca, setBusca] = useState("");
+  const [soloShiny, setSoloShiny] = useState(false);
   const { run, busy, err } = useRun(refresh);
-  const offers = api.snap.offers.filter((o) => o.status === "active");
+  const offers = api.snap.offers.filter((o) => o.status === "active")
+    .filter((o) => !soloShiny || o.isShiny)
+    .filter((o) => !busca.trim() || (o.species + " " + o.wants).toLowerCase().includes(busca.trim().toLowerCase()));
 
   if (open) {
     const o = api.snap.offers.find((x) => x.id === open);
@@ -267,8 +271,10 @@ function Mercado({ me, refresh, onOffenders }) {
         <h1 className="h1">Mercado</h1>
         <button className="btn mini secundario" onClick={onOffenders}>⚑ Infractores</button>
       </div>
+      <input className="buscador" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar especie o lo que piden…" />
+      <label className="check"><input type="checkbox" checked={soloShiny} onChange={(e) => setSoloShiny(e.target.checked)} /> ⭐ Solo shinys</label>
       {offers.length === 0 ? (
-        <Vacio icono="📦">Todavía no hay ofertas publicadas.<br />Sé quien estrene el mercado desde la pestaña <b>Publicar</b>.</Vacio>
+        <Vacio icono="📦">{busca || soloShiny ? "Ninguna oferta coincide con tu búsqueda." : <>Todavía no hay ofertas publicadas.<br />Sé quien estrene el mercado desde la pestaña <b>Publicar</b>.</>}</Vacio>
       ) : offers.map((o) => (
         <button key={o.id} className="ficha" style={{ marginBottom: 14 }} onClick={() => setOpen(o.id)}>
           <div className="tags">
@@ -374,6 +380,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
       </div>
 
       <div className="ficha mt-14"><div className="eyebrow" style={{ marginBottom: 6 }}>Contraparte</div><Rep userId={otroId} /></div>
+      {["proposal", "contract", "pre_proof"].includes(t.state) && (
+        <p className="txt-xs suave mt-6">⏳ Este intercambio se cancela solo tras 7 días sin actividad (21 días si ya está en curso).</p>
+      )}
       {err && <div className="mt-14"><Aviso tipo="lacre">{err}</Aviso></div>}
 
       {t.state === "proposal" && (soyA ? (
@@ -586,9 +595,17 @@ function Perfil({ me, refresh }) {
     if (!confirm("¿Eliminar tu cuenta? Tus sanciones (si las hay) se conservan de forma anonimizada, como indica la política de privacidad.")) return;
     run(() => api.deleteMe());
   };
+  const misSanciones = api.snap.sanctions.filter((s) => s.userId === me.id);
+  const [apelaId, setApelaId] = useState(null);
+  const [apelaTxt, setApelaTxt] = useState("");
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>Mi perfil</h1>
+      {me.status === "suspended" && (
+        <div style={{ marginBottom: 14 }}>
+          <Aviso tipo="lacre"><b>Tu cuenta está suspendida.</b> No puedes operar, pero sí revisar tus sanciones y presentar una apelación aquí abajo.</Aviso>
+        </div>
+      )}
       <div className="ticket">
         <div className="ticket-cuerpo">
           <div className="h2">{me.displayName}</div>
@@ -603,7 +620,7 @@ function Perfil({ me, refresh }) {
         </div>
         <div className="ticket-talon"><span className="txt-xs">Tu perfil público nunca muestra tu email ni datos personales.</span></div>
       </div>
-      {!me.verified && (
+      {!me.verified && me.status !== "suspended" && (
         <div className="ficha mt-14">
           <div className="eyebrow" style={{ marginBottom: 8 }}>Verificar mi cuenta HOME</div>
           {!me.verifCode ? (
@@ -623,6 +640,33 @@ function Perfil({ me, refresh }) {
               <p className="txt-xs suave mt-10">Un moderador la revisará y activará tu insignia ✓.</p>
             </>
           )}
+        </div>
+      )}
+      {misSanciones.length > 0 && (
+        <div className="ficha mt-14">
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Mis sanciones</div>
+          {misSanciones.map((s) => (
+            <div key={s.id} style={{ borderTop: "1px solid #d8ded9", paddingTop: 10, marginTop: 10 }}>
+              <div className="tags">
+                <span className="tag lacre">{s.level === "ban" ? "Ban" : s.level === "major" ? "Marca mayor" : "Marca menor"}</span>
+                {s.appealStatus === "open" && <span className="tag oro">Apelación en revisión</span>}
+                {s.appealStatus === "upheld" && <span className="tag lacre">Apelación denegada</span>}
+                {s.appealStatus === "overturned" && <span className="tag verde">Anulada en apelación</span>}
+              </div>
+              <p className="txt-s suave mt-6">{s.summary}</p>
+              {s.appealStatus === "none" && (apelaId === s.id ? (
+                <div className="mt-10">
+                  <Campo label="Tu apelación (mínimo 30 caracteres; la revisará un moderador distinto al que decidió)">
+                    <textarea value={apelaTxt} onChange={(e) => setApelaTxt(e.target.value)} />
+                  </Campo>
+                  <button className="btn mini" disabled={busy} onClick={() => run(async () => { await api.appeal(s.id, apelaTxt); setApelaId(null); setApelaTxt(""); })}>Enviar apelación</button>
+                  <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setApelaId(null)}>Cancelar</button>
+                </div>
+              ) : (
+                <button className="btn mini secundario mt-10" onClick={() => { setApelaId(s.id); setApelaTxt(""); }}>Apelar esta sanción</button>
+              ))}
+            </div>
+          ))}
         </div>
       )}
       <div className="ficha mt-14">
@@ -647,12 +691,13 @@ function Staff({ me, refresh }) {
   const esAdmin = me.role === "admin";
   const pendVerif = api.snap.users.filter((u) => !u.verified && u.status === "active");
   const abiertas = api.snap.disputes.filter((d) => d.status === "open");
+  const apelaciones = api.snap.sanctions.filter((s) => s.appealStatus === "open");
 
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>Panel de staff</h1>
       <div className="tags" style={{ marginBottom: 14 }}>
-        {[["disputas", `Disputas (${abiertas.length})`], ["verif", `Verificaciones (${pendVerif.length})`], ...(esAdmin ? [["usuarios", "Usuarios"], ["metricas", "Métricas"], ["audit", "Auditoría"]] : [])].map(([id, l]) => (
+        {[["disputas", `Disputas (${abiertas.length})`], ["verif", `Verificaciones (${pendVerif.length})`], ["apela", `Apelaciones (${apelaciones.length})`], ...(esAdmin ? [["usuarios", "Usuarios"], ["metricas", "Métricas"], ["audit", "Auditoría"]] : [])].map(([id, l]) => (
           <button key={id} className={`btn mini ${pane === id ? "" : "secundario"}`} onClick={() => setPane(id)}>{l}</button>
         ))}
       </div>
@@ -707,7 +752,7 @@ function Staff({ me, refresh }) {
       {pane === "verif" && (pendVerif.length === 0 ? <Vacio icono="🪪">No hay verificaciones pendientes.</Vacio> :
         pendVerif.map((u) => (
           <div key={u.id} className="ficha" style={{ marginBottom: 14 }}>
-            <div className="tags"><b>{u.displayName}</b><span className="tag tenue">Entrenador: {u.trainerName}</span><span className="tag tenue">Alta {fecha(u.createdAt)}</span></div>
+            <div className="tags"><b>{u.displayName}</b><span className="tag tenue">Entrenador: {u.trainerName}</span><span className="tag tenue">Alta {fecha(u.createdAt)}</span>{(u.dupFriend || u.dupFp) && <span className="tag lacre">⚠ Posible multicuenta</span>}</div>
             {u.verifCode
               ? <p className="txt-xs mt-6">Código asignado: <b className="mono">{u.verifCode}</b> — comprueba que aparece en la captura.</p>
               : <p className="txt-xs suave mt-6">Aún no ha generado su código de verificación.</p>}
@@ -725,6 +770,27 @@ function Staff({ me, refresh }) {
           </div>
         )))}
 
+      {pane === "apela" && (apelaciones.length === 0 ? <Vacio icono="🕊️">No hay apelaciones pendientes.</Vacio> :
+        apelaciones.map((s) => {
+          const u = userById(s.userId);
+          const yoDecidi = s.disputeDecidedBy === me.id;
+          return (
+            <div key={s.id} className="ficha" style={{ marginBottom: 14 }}>
+              <div className="tags"><b>{u?.displayName ?? "usuario"}</b><span className="tag lacre">{s.level}</span><span className="tag tenue">Apeló {s.appealedAt ? fecha(s.appealedAt) : ""}</span></div>
+              <div className="txt-s suave mt-6"><b>Sanción:</b> {s.summary}</div>
+              <div className="txt-s suave mt-6"><b>Apelación:</b> {s.appealText}</div>
+              {yoDecidi ? (
+                <div className="mt-10"><Aviso tipo="oro">Tú decidiste el caso original: esta apelación debe revisarla otro miembro del staff.</Aviso></div>
+              ) : (
+                <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                  <button className="btn mini" disabled={busy} onClick={() => run(() => api.decideAppeal(s.id, true))}>Anular sanción</button>
+                  <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy} onClick={() => run(() => api.decideAppeal(s.id, false))}>Mantener sanción</button>
+                </div>
+              )}
+            </div>
+          );
+        }))}
+
       {pane === "usuarios" && esAdmin && (
         <div className="ficha" style={{ overflowX: "auto" }}>
           <table className="tabla">
@@ -732,7 +798,7 @@ function Staff({ me, refresh }) {
             <tbody>
               {api.snap.users.map((u) => (
                 <tr key={u.id}>
-                  <td><b>{u.displayName}</b><br /><span className="suave">{u.trainerName}</span></td>
+                  <td><b>{u.displayName}</b>{(u.dupFriend || u.dupFp) && <span className="tag lacre" style={{ marginLeft: 6 }}>⚠</span>}<br /><span className="suave">{u.trainerName}</span></td>
                   <td>
                     <select className="select-mini" value={u.role} disabled={u.id === me.id || busy}
                       onChange={(e) => run(() => api.setRole(u.id, e.target.value))}>
@@ -814,7 +880,21 @@ export default function App() {
 
   const me = api.snap?.me ?? null;
   const esStaff = me && ["moderator", "admin"].includes(me.role);
-  const tabs = [["mercado", "Mercado"], ["publicar", "Publicar"], ["trades", "Trades"], ["perfil", "Perfil"], ...(esStaff ? [["staff", "Staff"]] : [])];
+  const pendientes = !me ? 0 : api.snap.trades.filter((t) => {
+    const soyA = t.aId === me.id, soyB = t.bId === me.id;
+    if (!soyA && !soyB) return false;
+    if (t.state === "proposal") return soyB;
+    if (t.state === "contract") return !(soyA ? t.signedA : t.signedB);
+    if (t.state === "pre_proof") return !(soyA ? t.proofA : t.proofB);
+    if (t.state === "post_proof") return !(soyA ? t.confirmedA : t.confirmedB);
+    if (t.state === "disputed") {
+      const d = api.snap.disputes.find((x) => x.tradeId === t.id && x.status === "open");
+      return d && d.accusedId === me.id && !d.defense;
+    }
+    return false;
+  }).length + (esStaff ? api.snap.disputes.filter((d) => d.status === "open").length : 0);
+  useEffect(() => { document.title = pendientes > 0 ? `(${pendientes}) TradeSafe` : "TradeSafe"; }, [pendientes]);
+  const tabs = [["mercado", "Mercado"], ["publicar", "Publicar"], ["trades", pendientes > 0 ? `Trades ●` : "Trades"], ["perfil", "Perfil"], ...(esStaff ? [["staff", "Staff"]] : [])];
 
   return (
     <div className="frame">
@@ -827,12 +907,20 @@ export default function App() {
       </header>
 
       <main className="content">
+        {me && me.status === "active" && pendientes > 0 && tab !== "trades" && !verInfractores && phase === "listo" && (
+          <button className="ficha" style={{ marginBottom: 14, borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }} onClick={() => setTab("trades")}>
+            <b style={{ color: "var(--lacre)" }}>⚑ Tienes {pendientes} {pendientes === 1 ? "acción pendiente" : "acciones pendientes"}</b>
+            <span className="txt-s suave"> — toca para ir a tus trades</span>
+          </button>
+        )}
         {phase === "cargando" ? (
           <Vacio icono="◈">Conectando…</Vacio>
         ) : phase === "sin-conexion" ? (
           <Vacio icono="📡">No se pudo conectar con el servidor.<br />Si acabas de desplegar, comprueba las variables <b className="mono">DATABASE_URL</b> y <b className="mono">JWT_SECRET</b> en Vercel.</Vacio>
         ) : !me ? (
           <AuthScreen refresh={refresh} hasUsers={hasUsers} />
+        ) : me.status === "suspended" ? (
+          <Perfil me={me} refresh={refresh} />
         ) : verInfractores ? (
           <Infractores onBack={() => setVerInfractores(false)} />
         ) : tab === "mercado" ? (
