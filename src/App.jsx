@@ -132,7 +132,7 @@ function AuthScreen({ refresh, hasUsers }) {
               <>
                 <Campo label="Nombre público en TradeSafe"><input value={f.name || ""} onChange={set("name")} placeholder="p. ej. AlexTrades" /></Campo>
                 <Campo label="Nombre de entrenador (Pokémon HOME)"><input value={f.trainer || ""} onChange={set("trainer")} placeholder="El que aparece en tu perfil de HOME" /></Campo>
-                <Campo label="Código de amigo (para añadirse en HOME)"><input value={f.friendCode || ""} onChange={set("friendCode")} placeholder="SW-1234-5678-9012" inputMode="numeric" className="mono" /></Campo>
+                <Campo label="Clave de amigo de HOME (perfil → Tus datos)"><input value={f.friendCode || ""} onChange={set("friendCode")} placeholder="p. ej. ZVNUKXJHKHHM" autoCapitalize="characters" className="mono" /></Campo>
               </>
             )}
             <Campo label="Email"><input type="email" value={f.email || ""} onChange={set("email")} inputMode="email" autoCapitalize="none" /></Campo>
@@ -284,6 +284,7 @@ function Mercado({ me, refresh, onOffenders }) {
     </div>
   );
 }
+
 /* ================= Infractores ================= */
 function Infractores({ onBack }) {
   const [q, setQ] = useState("");

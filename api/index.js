@@ -45,9 +45,11 @@ async function createUser({ name, trainer, email, pass, friendCode }, role, veri
   if (!trainer || !trainer.trim()) throw "Falta tu nombre de entrenador de HOME";
   if (!email || !/.+@.+\..+/.test(email)) throw "Email no válido";
   if (!pass || pass.length < 12) throw "La contraseña necesita al menos 12 caracteres";
-  const digits = String(friendCode || "").replace(/\D/g, "");
-  if (digits.length !== 12) throw "El código de amigo debe tener 12 dígitos (formato SW-1234-5678-9012)";
-  const fc = "SW-" + digits.slice(0, 4) + "-" + digits.slice(4, 8) + "-" + digits.slice(8, 12);
+  const limpio = String(friendCode || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (limpio.length !== 12) throw "La clave de amigo debe tener 12 caracteres (la de HOME, p. ej. ZVNUKXJHKHHM, o la de Switch de 12 dígitos)";
+  const fc = /^\d{12}$/.test(limpio)
+    ? "SW-" + limpio.slice(0, 4) + "-" + limpio.slice(4, 8) + "-" + limpio.slice(8, 12)
+    : limpio;
   const hash = await bcrypt.hash(pass, 10);
   const r = await q(
     `INSERT INTO users (email, pass_hash, display_name, trainer_name, role, verified, friend_code)
@@ -436,4 +438,3 @@ app.use((e, _req, res, _next) => {
 });
 
 export default app;
-
