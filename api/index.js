@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { q } from "../lib/db.js";
 import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
-import { sendMail, mailCodigo, mailAviso } from "../lib/mail.js";
+import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -55,6 +55,7 @@ const staff = (req, res, next) => ["moderator", "admin"].includes(req.me.role) ?
 const admin = (req, res, next) => req.me.role === "admin" ? next() : err(res, "forbidden", 403, "Solo administración");
 const token = (u) => jwt.sign({ sub: u.id, role: u.role }, SECRET, { expiresIn: "7d" });
 async function notify(userIds, tipo, code) {
+  if (!mailActivo()) return;
   try {
     const ids = [...new Set(userIds.filter(Boolean))];
     if (!ids.length) return;
@@ -108,6 +109,10 @@ app.post("/api/setup", async (req, res) => {
 const codigoEmail = () => String(Math.floor(100000 + Math.random() * 900000));
 
 async function iniciarVerifEmail(u) {
+  if (!mailActivo()) {
+    await q(`UPDATE users SET email_verified=true WHERE id=$1`, [u.id]);
+    return false;
+  }
   const code = codigoEmail();
   const { subject, html } = mailCodigo(code);
   const envio = await sendMail(u.email, subject, html);
