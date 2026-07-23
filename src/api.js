@@ -58,6 +58,7 @@ export const imageUrl = (id) => `/api/images/${id}?token=${encodeURIComponent(ge
 export async function appeal(sanctionId, text) { await call(`/sanctions/${sanctionId}/appeal`, { method: "POST", body: { text } }); await sync(); }
 export async function decideAppeal(sanctionId, overturn) { await call(`/sanctions/${sanctionId}/appeal/decide`, { method: "POST", body: { overturn } }); await sync(); }
 
-export const fecha = (iso) => new Date(iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+import { getLang } from "./i18n.js";
+export const fecha = (iso) => new Date(iso).toLocaleDateString(getLang(), { day: "numeric", month: "short", year: "numeric" });
 export const userById = (id) => snap?.users.find((u) => u.id === id) ?? null;
 export const sanctionsOf = (id) => snap?.sanctions.filter((s) => s.userId === id) ?? [];
