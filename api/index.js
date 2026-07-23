@@ -322,14 +322,15 @@ app.post("/api/offers", auth, needsEmail, async (req, res) => {
   if (!b.wants || b.wants.length < 3) return err(res, "validation_error", 422, "Describe qué buscas a cambio");
   if (hasMoney(b.wants) || hasMoney(b.species))
     return err(res, "money_offer_blocked", 422, "Detectamos una oferta con dinero real. TradeSafe es solo para trueques jugador-a-jugador.");
-  const ivs = Array.isArray(b.ivs) ? b.ivs.map(Number) : [];
+  const ivs = Array.isArray(b.ivs) ? b.ivs.map(Number).filter((n) => Number.isFinite(n)) : [];
   const leg = checkLegality({ species: b.species, level: b.level, isShiny: !!b.isShiny, ivs });
   if (leg.flag === "impossible") return err(res, "impossible_pokemon", 422, "Ficha imposible: " + leg.reasons.join(" · "));
   const data = {
-    species: String(b.species).trim(), level: Number(b.level), nature: b.nature || "—", ability: b.ability || "—",
-    ball: b.ball || "Poké Ball", isShiny: !!b.isShiny, ivs,
+    species: String(b.species).trim(), level: b.level ? Number(b.level) : null,
+    nature: b.nature || null, ability: b.ability || null, ball: b.ball || null, isShiny: !!b.isShiny,
+    ivs: ivs.length === 6 ? ivs : [],
     moves: (Array.isArray(b.moves) ? b.moves : []).map((m) => String(m).trim()).filter(Boolean).slice(0, 4),
-    origin: b.origin || "—", wants: String(b.wants).trim(), legality: leg,
+    origin: b.origin || null, wants: String(b.wants).trim(), legality: leg,
   };
   const r = await q(`INSERT INTO offers (owner_id, data) VALUES ($1,$2) RETURNING id`, [req.me.id, data]);
   res.status(201).json({ id: r.rows[0].id });

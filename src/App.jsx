@@ -183,15 +183,15 @@ function AuthScreen({ refresh, hasUsers }) {
 
 /* ================= Publicar oferta ================= */
 function Publicar({ refresh, done }) {
-  const [f, setF] = useState({ level: 50, ivs: "31,31,31,31,31,31" });
+  const [f, setF] = useState({});
+  const [detalles, setDetalles] = useState(false);
   const { run, busy, err } = useRun(refresh);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
   const submit = () => run(async () => {
     await api.createOffer({
-      species: f.species, level: Number(f.level), nature: f.nature, ability: f.ability,
+      species: f.species, level: f.level || null, nature: f.nature, ability: f.ability,
       ball: f.ball, isShiny: !!f.shiny,
-      ivs: String(f.ivs).split(",").map((x) => parseInt(x.trim(), 10)),
       moves: (f.moves || "").split(",").map((m) => m.trim()).filter(Boolean),
       origin: f.origin, wants: f.wants,
     });
@@ -202,20 +202,28 @@ function Publicar({ refresh, done }) {
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().publicarOferta}</h1>
       <div className="ficha">
+        <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().soloObligatorio}</p>
         <Campo label={tx().lblEspecie}><input value={f.species || ""} onChange={set("species")} placeholder={tx().phEspecie} /></Campo>
-        <div className="fila-2">
-          <Campo label={tx().lblNivel}><input type="number" min="1" max="100" value={f.level} onChange={set("level")} /></Campo>
-          <Campo label={tx().lblNaturaleza}><input value={f.nature || ""} onChange={set("nature")} placeholder={tx().phNaturaleza} /></Campo>
-        </div>
-        <div className="fila-2">
-          <Campo label={tx().lblHabilidad}><input value={f.ability || ""} onChange={set("ability")} /></Campo>
-          <Campo label={tx().lblBall}><input value={f.ball || ""} onChange={set("ball")} placeholder={tx().phBall} /></Campo>
-        </div>
-        <Campo label={tx().lblIvs}><input value={f.ivs} onChange={set("ivs")} className="mono" /></Campo>
-        <Campo label={tx().lblMoves}><input value={f.moves || ""} onChange={set("moves")} /></Campo>
-        <Campo label={tx().lblOrigen}><input value={f.origin || ""} onChange={set("origin")} placeholder={tx().phOrigen} /></Campo>
         <label className="check"><input type="checkbox" checked={!!f.shiny} onChange={set("shiny")} /> {tx().esShiny}</label>
         <Campo label={tx().lblBuscas}><textarea value={f.wants || ""} onChange={set("wants")} placeholder={tx().phBuscas} /></Campo>
+        <button className="enlace-volver" style={{ marginBottom: 12 }} onClick={() => setDetalles(!detalles)}>
+          {detalles ? tx().menosDetalles : tx().masDetalles}
+        </button>
+        {detalles && (
+          <>
+            <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().detallesAyuda}</p>
+            <div className="fila-2">
+              <Campo label={tx().lblNivel}><input type="number" min="1" max="100" value={f.level || ""} onChange={set("level")} /></Campo>
+              <Campo label={tx().lblNaturaleza}><input value={f.nature || ""} onChange={set("nature")} placeholder={tx().phNaturaleza} /></Campo>
+            </div>
+            <div className="fila-2">
+              <Campo label={tx().lblHabilidad}><input value={f.ability || ""} onChange={set("ability")} /></Campo>
+              <Campo label={tx().lblBall}><input value={f.ball || ""} onChange={set("ball")} placeholder={tx().phBall} /></Campo>
+            </div>
+            <Campo label={tx().lblMoves}><input value={f.moves || ""} onChange={set("moves")} /></Campo>
+            <Campo label={tx().lblOrigen}><input value={f.origin || ""} onChange={set("origin")} placeholder={tx().phOrigen} /></Campo>
+          </>
+        )}
         <Aviso tipo="oro">{tx().avisoCaptura}</Aviso>
         {err && <div className="mt-10"><Aviso tipo="lacre">{err}</Aviso></div>}
         <button className="btn mt-14" disabled={busy} onClick={submit}>{busy ? "…" : tx().btnPublicar}</button>
@@ -246,16 +254,22 @@ function Mercado({ me, refresh, onOffenders }) {
             <div className="tags">
               <span className="h1">{o.species}</span>
               {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
-              <span className="tag tenue">{tx().nv} {o.level}</span>
+              {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
             </div>
-            <div className="txt-xs suave mt-6">{o.nature} · {o.ability} · {o.ball} · {tx().origen} {o.origin}</div>
-            <div className="ivs mt-14">
-              {o.ivs.map((v, i) => (
-                <div key={i} className={`iv ${v === 31 ? "max" : ""}`}>
-                  <div className="l">{tx().ivLabels[i]}</div><div className="n">{v}</div>
-                </div>
-              ))}
-            </div>
+            {[o.nature, o.ability, o.ball, o.origin && `${tx().origen} ${o.origin}`].filter(Boolean).length > 0 && (
+              <div className="txt-xs suave mt-6">
+                {[o.nature, o.ability, o.ball, o.origin && `${tx().origen} ${o.origin}`].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            {o.ivs?.length === 6 && (
+              <div className="ivs mt-14">
+                {o.ivs.map((v, i) => (
+                  <div key={i} className={`iv ${v === 31 ? "max" : ""}`}>
+                    <div className="l">{tx().ivLabels[i]}</div><div className="n">{v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             {o.moves?.length > 0 && <div className="tags mt-10">{o.moves.map((m) => <span key={m} className="tag">{m}</span>)}</div>}
           </div>
           <div className="ticket-talon"><span className="txt-xs">{tx().busca} {o.wants}</span></div>
@@ -301,7 +315,7 @@ function Mercado({ me, refresh, onOffenders }) {
           <div className="tags">
             <span className="h2">{o.species}</span>
             {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
-            <span className="tag tenue">{tx().nv} {o.level}</span>
+            {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
             {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
           </div>
           <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx().busca} {o.wants}</p>
@@ -390,7 +404,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
           <div>
             <div className="eyebrow">{soyA ? tx().recibes : tx().tuEntregas}</div>
             <div className="h2 mt-6">{offer ? `${offer.species}${offer.isShiny ? " ⭐" : ""}` : "—"}</div>
-            <div className="txt-xs suave">{offer ? `${tx().nv} ${offer.level} · ${offer.nature}` : ""}</div>
+            <div className="txt-xs suave">{offer ? [offer.level && `${tx().nv} ${offer.level}`, offer.nature].filter(Boolean).join(" · ") : ""}</div>
           </div>
         </div>
         {(t.signedA && t.signedB) && (
