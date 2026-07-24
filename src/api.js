@@ -71,6 +71,12 @@ export async function addWish(d) { await call("/wishlist", { method: "POST", bod
 export async function delWish(id) { await call(`/wishlist/${id}`, { method: "DELETE" }); await sync(); }
 export async function saveProfile(d) { await call("/me/showcase", { method: "POST", body: d }); await sync(); }
 export const getStats = () => call("/stats");
+export async function createGiveaway(d) { await call("/giveaways", { method: "POST", body: d }); await sync(); }
+export async function enterGiveaway(id) { await call(`/giveaways/${id}/enter`, { method: "POST" }); await sync(); }
+export async function drawGiveaway(id) { const r = await call(`/giveaways/${id}/draw`, { method: "POST" }); await sync(); return r; }
+export async function cancelGiveaway(id) { await call(`/giveaways/${id}/cancel`, { method: "POST" }); await sync(); }
+export async function postBoard(body) { await call("/board", { method: "POST", body: { body } }); await sync(); }
+export async function delBoard(id) { await call(`/board/${id}`, { method: "DELETE" }); await sync(); }
 export const imageUrl = (id) => `/api/images/${id}?token=${encodeURIComponent(getToken() || "")}`;
 export async function appeal(sanctionId, text) { await call(`/sanctions/${sanctionId}/appeal`, { method: "POST", body: { text } }); await sync(); }
 export async function verifyEmail(code) { await call("/email/verify", { method: "POST", body: { code } }); await sync(); }

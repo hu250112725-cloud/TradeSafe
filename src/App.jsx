@@ -473,6 +473,122 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   );
 }
 
+/* ================= Comunidad: sorteos y tablón ================= */
+function Comunidad({ me, refresh, esStaff, onFicha }) {
+  const [sub, setSub] = useState("sorteos");
+  const [msg, setMsg] = useState("");
+  const [crear, setCrear] = useState(false);
+  const [f, setF] = useState({ days: 7, minTrades: 0 });
+  const { run, busy, err } = useRun(refresh);
+  const sorteos = api.snap.giveaways || [];
+  const tablon = api.snap.board || [];
+
+  return (
+    <div>
+      <h1 className="h1" style={{ marginBottom: 14 }}>{tx().tabComunidad}</h1>
+      <div className="tags" style={{ marginBottom: 14 }}>
+        {[["sorteos", tx().sorteos], ["tablon", tx().tablon]].map(([id, l]) => (
+          <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`} onClick={() => setSub(id)}>{l}</button>
+        ))}
+      </div>
+      {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
+
+      {sub === "sorteos" && (
+        <>
+          {esStaff && (crear ? (
+            <div className="ficha" style={{ marginBottom: 14 }}>
+              <Campo label={tx().lblTituloSorteo}><input value={f.title || ""} onChange={(e) => setF({ ...f, title: e.target.value })} /></Campo>
+              <Campo label={tx().lblDescSorteo}><textarea value={f.description || ""} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
+              <Campo label={tx().lblPremios}><textarea value={f.prizesText || ""} onChange={(e) => setF({ ...f, prizesText: e.target.value })} placeholder={"Shiny Gengar\nDreepy HA\nDitto 6IV"} /></Campo>
+              <div className="fila-2">
+                <Campo label={tx().lblDiasSorteo}><input type="number" min="1" max="30" value={f.days} onChange={(e) => setF({ ...f, days: e.target.value })} /></Campo>
+                <Campo label={tx().lblMinTrades}><input type="number" min="0" value={f.minTrades} onChange={(e) => setF({ ...f, minTrades: e.target.value })} /></Campo>
+              </div>
+              <button className="btn" disabled={busy} onClick={() => run(async () => {
+                await api.createGiveaway({ title: f.title, description: f.description, days: Number(f.days), minTrades: Number(f.minTrades),
+                  prizes: String(f.prizesText || "").split("\n").map((x) => x.trim()).filter(Boolean) });
+                setCrear(false); setF({ days: 7, minTrades: 0 });
+              })}>{tx().crearSorteo}</button>
+              <button className="btn secundario" onClick={() => setCrear(false)}>{tx().btnCancelar}</button>
+            </div>
+          ) : (
+            <button className="btn mini secundario" style={{ marginBottom: 14 }} onClick={() => setCrear(true)}>➕ {tx().crearSorteo}</button>
+          ))}
+
+          {sorteos.length === 0 ? <Vacio icono="🎁">{tx().sinSorteos}</Vacio> : sorteos.map((g) => (
+            <div key={g.id} className="ticket" style={{ marginBottom: 14 }}>
+              <div className="ticket-cuerpo">
+                <div className="tags">
+                  <span className="h2">{g.title}</span>
+                  {g.status === "drawn" && <span className="tag verde">{tx().ganadores}</span>}
+                  {g.status === "cancelled" && <span className="tag lacre">✕</span>}
+                </div>
+                {g.description && <p className="txt-s suave mt-6">{g.description}</p>}
+                <div className="eyebrow" style={{ margin: "12px 0 6px" }}>{tx().premios}</div>
+                {g.prizes.map((p, i) => (
+                  <div key={i} className="fila" style={{ padding: "3px 0" }}>
+                    <span className="txt-s">{["🥇","🥈","🥉","🎖️"][i] || "🎁"} {p}</span>
+                    {g.winners?.[i] && <b className="txt-s" style={{ color: "var(--verde)" }}>{g.winners[i].name}</b>}
+                  </div>
+                ))}
+                <div className="txt-xs suave mt-10">
+                  {tx().organiza} {userById(g.hostId)?.displayName ?? "—"} · {tx().participantes(g.entries)}
+                  {g.minTrades > 0 && <> · {tx().requisitoTrades(g.minTrades)}</>}
+                </div>
+                {g.status === "drawn" && g.seed && (
+                  <p className="txt-xs suave mono mt-6">{tx().sorteoVerificable}: {g.seed}</p>
+                )}
+              </div>
+              <div className="ticket-talon">
+                {g.status === "open" ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span className="txt-xs">{tx().terminaEl} {fecha(g.endsAt)}</span>
+                    {g.hostId !== me.id && (g.mine
+                      ? <span className="tag verde">{tx().yaParticipas}</span>
+                      : <button className="btn mini" disabled={busy} onClick={() => run(() => api.enterGiveaway(g.id))}>{tx().btnParticipar}</button>)}
+                    {esStaff && (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn mini" disabled={busy} onClick={() => run(() => api.drawGiveaway(g.id))}>{tx().btnSortear}</button>
+                        <button className="btn mini secundario" disabled={busy} onClick={() => run(() => api.cancelGiveaway(g.id))}>{tx().btnCancelarSorteo}</button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="txt-xs">{g.drawnAt ? fecha(g.drawnAt) : ""}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {sub === "tablon" && (
+        <>
+          <p className="txt-s suave" style={{ marginBottom: 14 }}>{tx().tablonIntro}</p>
+          <div className="ficha" style={{ marginBottom: 14 }}>
+            <textarea className="chat-input" style={{ width: "100%", borderRadius: 10, minHeight: 60 }}
+              value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={500} placeholder={tx().phTablon} />
+            <button className="btn mini mt-10" disabled={busy || msg.trim().length < 3}
+              onClick={() => run(async () => { await api.postBoard(msg.trim()); setMsg(""); })}>{tx().btnPublicarTablon}</button>
+          </div>
+          {tablon.length === 0 ? <Vacio icono="📌">{tx().sinTablon}</Vacio> : tablon.map((b) => (
+            <div key={b.id} className="ficha" style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <button className="enlace-volver" style={{ fontWeight: 700 }} onClick={() => onFicha(b.byId)}>{b.byName}</button>
+                <span className="txt-xs suave">{fecha(b.at)}</span>
+              </div>
+              <p className="txt-s mt-6" style={{ whiteSpace: "pre-wrap" }}>{b.body}</p>
+              {(b.byId === me.id || esStaff) && (
+                <button className="enlace-volver txt-xs mt-6" disabled={busy} onClick={() => run(() => api.delBoard(b.id))}>{tx().quitar}</button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ================= Lista de deseos ================= */
 function Deseos({ me, refresh, onAbrirOferta }) {
   const [f, setF] = useState({});
@@ -904,6 +1020,8 @@ function Perfil({ me, refresh }) {
   const [vitrina, setVitrina] = useState(u?.showcase || []);
   const [nuevo, setNuevo] = useState({});
   const [guardado, setGuardado] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const certUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/cert/${me.id}`;
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().miPerfil}</h1>
@@ -997,6 +1115,17 @@ function Perfil({ me, refresh }) {
           {tx().btnGuardarPerfil}
         </button>
         {guardado && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().certificado}</div>
+        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().certIntro}</p>
+        <p className="txt-xs mono suave" style={{ wordBreak: "break-all", marginBottom: 10 }}>{certUrl}</p>
+        <button className="btn mini secundario" onClick={async () => {
+          try { await navigator.clipboard.writeText(certUrl); } catch { /* sin permiso */ }
+          setCopiado(true); setTimeout(() => setCopiado(false), 3000);
+        }}>{tx().btnCopiarCert}</button>
+        {copiado && <div className="mt-10"><Aviso tipo="verde">{tx().certCopiado}</Aviso></div>}
       </div>
 
       <div className="ficha mt-14">
@@ -1282,6 +1411,7 @@ export default function App() {
   const nMatches = api.snap?.matches?.length || 0;
   const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar],
     ["deseos", nMatches > 0 ? `${tx().tabDeseos} ●` : tx().tabDeseos],
+    ["comunidad", tx().tabComunidad],
     ["trades", pendientes > 0 ? tx().tabTrades + " ●" : tx().tabTrades],
     ["perfil", tx().tabPerfil], ...(esStaff ? [["staff", tx().tabStaff]] : [])];
 
@@ -1364,6 +1494,8 @@ export default function App() {
         ) : tab === "mercado" ? (
           <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
             abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
+        ) : tab === "comunidad" ? (
+          <Comunidad me={me} refresh={refresh} esStaff={esStaff} onFicha={setVerFicha} />
         ) : tab === "deseos" ? (
           <Deseos me={me} refresh={refresh} onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }} />
         ) : tab === "publicar" ? (

@@ -285,3 +285,8 @@ body.oscuro .tabla td { border-bottom-color: #2d3a29; }
 body.oscuro .aviso.lacre { color: #ffc4ae; }
 body.oscuro .aviso.oro { color: #f2dd9a; }
 body.oscuro .aviso.verde { color: #b6ebcb; }
+
+/* Barra de pestañas: desplazable cuando hay muchas */
+.tabbar-inner { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tabbar-inner::-webkit-scrollbar { display: none; }
+.tab { flex: 0 0 auto; min-width: 62px; padding: 10px 10px; white-space: nowrap; }

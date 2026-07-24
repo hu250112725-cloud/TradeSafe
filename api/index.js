@@ -309,6 +309,18 @@ app.get("/api/state", authAny, async (req, res) => {
                ORDER BY o.id, o.created_at DESC LIMIT 30`, [me.id])
     : { rows: [] };
 
+  const givR = await q(
+    `SELECT g.*, (SELECT count(*)::int FROM giveaway_entries e WHERE e.giveaway_id=g.id) AS entries,
+            EXISTS (SELECT 1 FROM giveaway_entries e WHERE e.giveaway_id=g.id AND e.user_id=$1) AS mine
+     FROM giveaways g
+     WHERE g.status='open' OR g.drawn_at > now() - interval '30 days'
+     ORDER BY g.created_at DESC LIMIT 20`, [me.id]);
+  const boardR = await q(
+    `SELECT b.id, b.user_id, b.body, b.created_at, u.display_name
+     FROM board b JOIN users u ON u.id=b.user_id
+     WHERE NOT b.hidden AND b.created_at > now() - interval '14 days'
+     ORDER BY b.id DESC LIMIT 60`);
+
   const sanctionsR = await q(`SELECT s.*, d.decided_by AS dispute_decided_by FROM sanctions s
     LEFT JOIN disputes d ON d.id = s.dispute_id
     WHERE s.expires IS NULL OR s.expires>now() ORDER BY s.created_at DESC LIMIT 200`);
@@ -353,6 +365,12 @@ app.get("/api/state", authAny, async (req, res) => {
       ...(esStaff ? { disputeDecidedBy: s.dispute_decided_by } : {}),
     })),
     audit: auditR.rows.map((a) => ({ id: a.id, actorId: a.actor_id, action: a.action, target: a.target, reason: a.reason, at: a.created_at })),
+    giveaways: givR.rows.map((g) => ({
+      id: g.id, hostId: g.host_id, title: g.title, description: g.description,
+      prizes: g.prizes, winners: g.winners, status: g.status, minTrades: g.min_trades,
+      endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
+    })),
+    board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
     wishlist: wishR.rows.map((w) => ({ id: w.id, species: w.species, shinyOnly: w.shiny_only, note: w.note, at: w.created_at })),
     matches: matchesR.rows.map((m) => ({
       offerId: m.id, ownerId: m.owner_id, species: m.data?.species, isShiny: !!m.data?.isShiny,
@@ -469,6 +487,103 @@ app.get("/api/stats", async (_req, res) => {
     (SELECT count(*)::int FROM disputes WHERE status='open') AS abiertas,
     (SELECT count(*)::int FROM sanctions WHERE expires IS NULL OR expires>now()) AS sanciones`);
   res.json(r.rows[0]);
+});
+
+/* ---------- Tablón de anuncios ---------- */
+app.post("/api/board", auth, needsEmail, async (req, res) => {
+  const texto = String(req.body?.body || "").trim().slice(0, 500);
+  if (texto.length < 3) return err(res, "validation_error", 422, "Escribe un mensaje");
+  if (hasMoney(texto)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
+  if (!req.me.verified) return err(res, "forbidden", 403, "Verifica tu cuenta de HOME para publicar en el tablón");
+  const sanc = await q(`SELECT 1 FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [req.me.id]);
+  if (sanc.rowCount) return err(res, "forbidden", 403, "Las cuentas con sanción activa no pueden publicar en el tablón");
+  const reciente = await q(
+    `SELECT count(*)::int AS n FROM board WHERE user_id=$1 AND created_at > now() - interval '5 minutes'`, [req.me.id]);
+  if (reciente.rows[0].n >= 3) return err(res, "too_many_attempts", 429, "Espera unos minutos antes de publicar otro mensaje");
+  await q(`INSERT INTO board (user_id, body) VALUES ($1,$2)`, [req.me.id, texto]);
+  res.status(201).json({ ok: true });
+});
+
+app.delete("/api/board/:id", auth, async (req, res) => {
+  const esStaff = ["moderator", "admin"].includes(req.me.role);
+  const r = esStaff
+    ? await q(`UPDATE board SET hidden=true WHERE id=$1 RETURNING user_id`, [req.params.id])
+    : await q(`UPDATE board SET hidden=true WHERE id=$1 AND user_id=$2 RETURNING user_id`, [req.params.id, req.me.id]);
+  if (!r.rowCount) return err(res, "not_found", 404, "Mensaje no encontrado");
+  if (esStaff && r.rows[0].user_id !== req.me.id) await audit(req.me.id, "board.hidden", req.params.id, "Retirado por staff");
+  res.json({ ok: true });
+});
+
+/* ---------- Sorteos ---------- */
+app.post("/api/giveaways", auth, staff, async (req, res) => {
+  const titulo = String(req.body?.title || "").trim();
+  if (titulo.length < 5) return err(res, "validation_error", 422, "El sorteo necesita un título (mínimo 5 caracteres)");
+  if (hasMoney(titulo) || hasMoney(String(req.body?.description || "")))
+    return err(res, "money_offer_blocked", 422, "Los sorteos con dinero real están prohibidos");
+  const premios = (Array.isArray(req.body?.prizes) ? req.body.prizes : [])
+    .slice(0, 10).map((p) => String(p || "").trim().slice(0, 120)).filter(Boolean);
+  if (!premios.length) return err(res, "validation_error", 422, "Añade al menos un premio");
+  const dias = Math.min(30, Math.max(1, Number(req.body?.days) || 7));
+  const r = await q(
+    `INSERT INTO giveaways (host_id, title, description, prizes, min_trades, ends_at)
+     VALUES ($1,$2,$3,$4,$5, now() + ($6 || ' days')::interval) RETURNING id`,
+    [req.me.id, titulo, String(req.body?.description || "").trim().slice(0, 500) || null,
+     JSON.stringify(premios), Math.max(0, Number(req.body?.minTrades) || 0), String(dias)]);
+  await audit(req.me.id, "giveaway.created", r.rows[0].id, `${premios.length} premios · ${dias} días`);
+  res.status(201).json({ id: r.rows[0].id });
+});
+
+app.post("/api/giveaways/:id/enter", auth, needsEmail, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  const gv = g.rows[0];
+  if (gv.status !== "open") return err(res, "state_invalid", 409, "El sorteo ya está cerrado");
+  if (new Date(gv.ends_at) < Date.now()) return err(res, "state_invalid", 409, "El plazo del sorteo ha terminado");
+  if (gv.host_id === req.me.id) return err(res, "forbidden", 403, "Quien organiza el sorteo no puede participar");
+  if (!req.me.verified) return err(res, "forbidden", 403, "Verifica tu cuenta de HOME para participar");
+  const cerrados = await q(`SELECT count(*)::int AS n FROM trades WHERE state='closed' AND (a_id=$1 OR b_id=$1)`, [req.me.id]);
+  if (cerrados.rows[0].n < gv.min_trades)
+    return err(res, "forbidden", 403, `Necesitas ${gv.min_trades} intercambios cerrados para participar`);
+  const sanc = await q(`SELECT 1 FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [req.me.id]);
+  if (sanc.rowCount) return err(res, "forbidden", 403, "Las cuentas con sanción activa no pueden participar");
+  try {
+    await q(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES ($1,$2)`, [gv.id, req.me.id]);
+  } catch (e) {
+    if (e && e.code === "23505") return err(res, "conflict", 409, "Ya estás participando en este sorteo");
+    throw e;
+  }
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/giveaways/:id/draw", auth, staff, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  const gv = g.rows[0];
+  if (gv.status !== "open") return err(res, "state_invalid", 409, "Este sorteo ya fue sorteado");
+  const ent = await q(
+    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+     WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
+  if (!ent.rowCount) return err(res, "state_invalid", 409, "Nadie participó en este sorteo");
+  // Sorteo verificable: la semilla se publica y cualquiera puede recalcular el resultado
+  const semilla = crypto.randomBytes(8).toString("hex");
+  const orden = ent.rows
+    .map((p) => ({ ...p, h: crypto.createHash("sha256").update(semilla + ":" + p.user_id).digest("hex") }))
+    .sort((a, b) => a.h.localeCompare(b.h));
+  const ganadores = orden.slice(0, gv.prizes.length).map((p, i) => ({
+    userId: p.user_id, name: p.display_name, prize: gv.prizes[i], hash: p.h.slice(0, 12),
+  }));
+  await q(`UPDATE giveaways SET status='drawn', winners=$2, seed=$3, drawn_at=now() WHERE id=$1`,
+    [gv.id, JSON.stringify(ganadores), semilla]);
+  await audit(req.me.id, "giveaway.drawn", gv.id, `${ganadores.length} ganadores · semilla ${semilla}`);
+  await notify(ganadores.map((w) => w.userId), "closed", null);
+  res.json({ winners: ganadores, seed: semilla });
+});
+
+app.post("/api/giveaways/:id/cancel", auth, staff, async (req, res) => {
+  const r = await q(`UPDATE giveaways SET status='cancelled' WHERE id=$1 AND status='open' RETURNING id`, [req.params.id]);
+  if (!r.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado o ya cerrado");
+  await audit(req.me.id, "giveaway.cancelled", req.params.id, String(req.body?.reason || "").slice(0, 200));
+  res.json({ ok: true });
 });
 
 /* ---------- Intercambios ---------- */
@@ -711,6 +826,27 @@ app.get("/api/me/export", authAny, async (req, res) => {
   res.json({
     perfil: { displayName: req.me.display_name, trainerName: req.me.trainer_name, email: req.me.email, createdAt: req.me.created_at },
     ofertas: offers.rows, intercambios: trades.rows,
+  });
+});
+
+// Certificado público de reputación: verificable por cualquiera con el enlace
+app.get("/api/cert/:id", async (req, res) => {
+  const u = await q(`SELECT id, display_name, trainer_name, verified, created_at FROM users WHERE id=$1 AND status<>'deleted'`, [req.params.id]);
+  if (!u.rowCount) return err(res, "not_found", 404, "Entrenador no encontrado");
+  const usr = u.rows[0];
+  const t = await q(
+    `SELECT count(*)::int AS cerrados,
+       round(avg(CASE WHEN a_id=$1 THEN (flags->>'ratingForA')::numeric ELSE (flags->>'ratingForB')::numeric END),1) AS rating,
+       max(created_at) AS ultimo
+     FROM trades WHERE state='closed' AND (a_id=$1 OR b_id=$1)`, [usr.id]);
+  const s = await q(`SELECT count(*)::int AS n FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [usr.id]);
+  const cerrados = t.rows[0].cerrados;
+  res.json({
+    trainer: usr.display_name, homeName: usr.trainer_name, verified: usr.verified,
+    memberSince: usr.created_at, closedTrades: cerrados, rating: t.rows[0].rating,
+    lastTrade: t.rows[0].ultimo, activeSanctions: s.rows[0].n,
+    rank: s.rows[0].n > 0 ? "marcado" : cerrados >= 100 ? "oro" : cerrados >= 25 ? "plata" : cerrados >= 5 ? "bronce" : "novato",
+    issuedAt: new Date().toISOString(),
   });
 });
 
