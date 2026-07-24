@@ -155,6 +155,10 @@ function calcularAvisos(me, esStaff) {
     else if (s.appealStatus === "none")
       out.push({ key: `sanc:${s.id}:new`, texto: t9.n_sanction, at: s.at, tab: "perfil" });
   }
+  if (["mediator", "moderator", "admin"].includes(me.role)) {
+    for (const t of api.snap.trades.filter((x) => x.aId !== me.id && x.bId !== me.id && x.mediationRequested && !x.mediatorId))
+      out.push({ key: `med:${t.id}`, texto: t9.n_mediacion, at: t.events?.at(-1)?.at || t.createdAt, tradeId: t.id, code: t.code });
+  }
   if (esStaff) {
     for (const d of api.snap.disputes.filter((x) => x.status === "open" && x.reporterId !== me.id && x.accusedId !== me.id))
       out.push({ key: `stf:disp:${d.id}`, texto: t9.n_staff_dispute, at: d.at, tab: "staff" });
@@ -423,10 +427,10 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           </button>
         ) : (
           <div className="ficha mt-14">
-            <Campo label={tx().lblQueOfreces} error={err}>
-              <textarea value={give} onChange={(e) => setGive(e.target.value)} placeholder={tx().phQueOfreces} />
+            <Campo label={tx().lblItems} error={err}>
+              <textarea value={give} onChange={(e) => setGive(e.target.value)} placeholder={tx().phItems} style={{ minHeight: 90 }} />
             </Campo>
-            <button className="btn" disabled={busy} onClick={() => run(async () => { await api.propose(o.id, give); setOpen(null); setGive(""); })}>
+            <button className="btn" disabled={busy} onClick={() => run(async () => { await api.propose(o.id, give.split("\n").map((x) => x.trim()).filter(Boolean)); setOpen(null); setGive(""); })}>
               {busy ? "…" : tx().btnProponer}
             </button>
           </div>
@@ -738,6 +742,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const [claim, setClaim] = useState("");
   const [showDispute, setShowDispute] = useState(false);
   const [offsitePend, setOffsitePend] = useState(null);
+  const [editandoItems, setEditandoItems] = useState(false);
+  const [itemsTxt, setItemsTxt] = useState("");
+  const [notaMed, setNotaMed] = useState("");
   const [rated, setRated] = useState(0);
   const { run, busy, err } = useRun(refresh);
   if (!t) return null;
@@ -750,6 +757,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const yoEntregue = soyA ? t.deliveredA : t.deliveredB;
   const yoConfirme = soyA ? t.confirmedA : t.confirmedB;
   const miDisputa = api.snap.disputes.find((d) => d.tradeId === t.id);
+  const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
   const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
   const enviar = async () => {
@@ -775,12 +783,15 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         <div className="contrato-grid">
           <div>
             <div className="eyebrow">{soyA ? tx().tuEntregas : tx().entrega(otro?.displayName ?? "—")}</div>
-            <p className="txt-s mt-6">{t.aGive}</p>
+            {(t.aItems?.length ? t.aItems : [t.aGive]).map((it, i) => (
+              <p key={i} className="txt-s mt-6">• {it}</p>
+            ))}
           </div>
           <div>
             <div className="eyebrow">{soyA ? tx().recibes : tx().tuEntregas}</div>
             <div className="h2 mt-6">{offer ? `${offer.species}${offer.isShiny ? " ⭐" : ""}` : "—"}</div>
             <div className="txt-xs suave">{offer ? [offer.level && `${tx().nv} ${offer.level}`, offer.nature].filter(Boolean).join(" · ") : ""}</div>
+            {t.bItems?.map((it, i) => <p key={i} className="txt-s mt-6">• {it}</p>)}
           </div>
         </div>
         {(t.signedA && t.signedB) && (
@@ -796,7 +807,31 @@ function TradeView({ trade: id, me, refresh, onBack }) {
       )}
       {err && <div className="mt-14"><Aviso tipo="lacre">{err}</Aviso></div>}
 
-      {t.state === "proposal" && (soyA ? (
+      {["proposal", "contract"].includes(t.state) && !t.signedA && !t.signedB && (
+        editandoItems ? (
+          <div className="ficha mt-14">
+            <Campo label={tx().lblItems}>
+              <textarea value={itemsTxt} onChange={(e) => setItemsTxt(e.target.value)} placeholder={tx().phItems} style={{ minHeight: 90 }} />
+            </Campo>
+            <button className="btn mini" disabled={busy} onClick={() => run(async () => {
+              await api.setItems(t.id, itemsTxt.split("\n").map((x) => x.trim()).filter(Boolean));
+              setEditandoItems(false);
+            })}>{tx().btnGuardarTerminos}</button>
+            <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setEditandoItems(false)}>{tx().btnCancelar}</button>
+          </div>
+        ) : (
+          <button className="btn mini secundario mt-14" onClick={() => {
+            setItemsTxt((soyA ? (t.aItems?.length ? t.aItems : [t.aGive]) : (t.bItems || [])).join("\n"));
+            setEditandoItems(true);
+          }}>{tx().editarTerminos}</button>
+        )
+      )}
+
+      {(t.aId !== me.id && t.bId !== me.id) && (
+        <div className="mt-14"><Aviso tipo="verde">{tx().mediadorActual(userById(t.mediatorId)?.displayName ?? "—")}</Aviso></div>
+      )}
+
+      {(t.aId === me.id || t.bId === me.id) && t.state === "proposal" && (soyA ? (
         <div className="mt-14"><Aviso tipo="verde">{tx().propuestaEnviada(otro?.displayName)}</Aviso>
           <button className="btn peligro mt-14" disabled={busy} onClick={() => act("cancel")}>{tx().retirarPropuesta}</button></div>
       ) : (
@@ -921,7 +956,38 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         </div>
       )}
 
-      {["in_progress", "post_proof"].includes(t.state) && (
+      {["contract", "pre_proof", "in_progress", "post_proof"].includes(t.state) && (
+        <div className="ficha mt-14">
+          <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().mediacion}</div>
+          {t.mediatorId ? (
+            <>
+              <p className="txt-s">{tx().mediadorActual(userById(t.mediatorId)?.displayName ?? "—")}</p>
+              {t.mediatorId === me.id && (
+                <div className="mt-10">
+                  <Campo label={tx().lblNotaMediacion}><input value={notaMed} onChange={(e) => setNotaMed(e.target.value)} /></Campo>
+                  <button className="btn mini" disabled={busy} onClick={() => run(async () => { await api.closeMediation(t.id, notaMed); setNotaMed(""); })}>
+                    {tx().btnCerrarMediacion}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : t.mediationRequested ? (
+            <>
+              <Aviso tipo="oro">{tx().mediacionPedida}</Aviso>
+              {puedeMediar && t.aId !== me.id && t.bId !== me.id && (
+                <button className="btn mini mt-10" disabled={busy} onClick={() => run(() => api.takeMediation(t.id))}>{tx().btnTomarCaso}</button>
+              )}
+            </>
+          ) : (t.aId === me.id || t.bId === me.id) ? (
+            <>
+              <p className="txt-xs suave">{tx().mediacionAyuda}</p>
+              <button className="btn mini secundario mt-10" disabled={busy} onClick={() => run(() => api.askMediation(t.id))}>{tx().pedirMediacion}</button>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {(["in_progress", "post_proof"].includes(t.state) || t.mediationRequested || t.mediatorId) && (
         <>
           <div className="ticket mt-14">
             <div className="eyebrow" style={{ padding: "10px 14px 0" }}>{tx().chatTitulo}</div>
@@ -972,10 +1038,32 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
   const mine = api.snap.trades.filter((t) => t.aId === me.id || t.bId === me.id);
+  const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
+  const casos = puedeMediar
+    ? api.snap.trades.filter((t) => t.aId !== me.id && t.bId !== me.id && (t.mediationRequested || t.mediatorId === me.id))
+    : [];
   if (open) return <TradeView trade={open} me={me} refresh={refresh} onBack={() => setOpen(null)} />;
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().misIntercambios}</h1>
+      {puedeMediar && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().casosMediacion(casos.length)}</div>
+          {casos.length === 0 ? (
+            <p className="txt-xs suave">{tx().sinCasosMediacion}</p>
+          ) : casos.map((t) => (
+            <button key={t.id} className="ficha" style={{ marginBottom: 10, borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}
+              onClick={() => setOpen(t.id)}>
+              <div className="tags">
+                <Sello code={t.code} />
+                <span className="tag oro">{t.mediatorId === me.id ? tx().mediacion : tx().btnTomarCaso}</span>
+                <span className="tag tenue">{stateLabel(t.state)}</span>
+              </div>
+              <p className="txt-s mt-10">{userById(t.aId)?.displayName ?? "—"} ⇄ {userById(t.bId)?.displayName ?? "—"}</p>
+            </button>
+          ))}
+        </div>
+      )}
       {mine.length === 0 ? (
         <Vacio icono="🤝">{tx().sinTrades1}<br />{tx().sinTrades2} <b>{tx().tabMercado}</b> {tx().sinTrades3}</Vacio>
       ) : mine.map((t) => {

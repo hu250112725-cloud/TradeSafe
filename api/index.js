@@ -281,9 +281,14 @@ app.get("/api/state", authAny, async (req, res) => {
 
   const offersR = await q(`SELECT * FROM offers WHERE status='active' OR owner_id=$1 ORDER BY created_at DESC LIMIT 200`, [me.id]);
 
+  const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const tradesR = esStaff
-    ? await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1
+    ? await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1 OR mediator_id=$1
+               OR (flags->>'mediationRequested')::boolean = true
                OR id IN (SELECT trade_id FROM disputes WHERE status='open') ORDER BY created_at DESC LIMIT 200`, [me.id])
+    : puedeMediar
+    ? await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1 OR mediator_id=$1
+               OR (flags->>'mediationRequested')::boolean = true ORDER BY created_at DESC LIMIT 200`, [me.id])
     : await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1 ORDER BY created_at DESC LIMIT 200`, [me.id]);
 
   const tradeIds = tradesR.rows.map((t) => t.id);
@@ -348,6 +353,7 @@ app.get("/api/state", authAny, async (req, res) => {
     offers: offersR.rows.map((o) => ({ id: o.id, ownerId: o.owner_id, status: o.status, createdAt: o.created_at, ...o.data })),
     trades: tradesR.rows.map((t) => ({
       id: t.id, code: t.code, offerId: t.offer_id, aId: t.a_id, bId: t.b_id, aGive: t.a_give,
+      aItems: t.a_items || [], bItems: t.b_items || [], mediatorId: t.mediator_id,
       state: t.state, ...t.flags, events: t.events, createdAt: t.created_at,
       messages: msgsR.rows.filter((m) => m.trade_id === t.id).map((m) => ({ by: m.sender_id, system: !m.sender_id, kind: m.kind, text: m.body, at: m.created_at })),
       proofs: proofsR.rows.filter((p) => p.trade_id === t.id).map((p) => ({ id: p.id, by: p.owner_id, kind: p.kind })),
@@ -597,21 +603,51 @@ async function setTrade(t, patch, state, eventBy, eventTo) {
   await q(`UPDATE trades SET flags=$2, state=$3, events=$4 WHERE id=$1`, [t.id, flags, state ?? t.state, JSON.stringify(events)]);
 }
 
+const MAX_ITEMS = 6;
+// Normaliza lo que ofrece cada parte: acepta texto suelto o lista de objetos
+function normalizarItems(entrada) {
+  const lista = (Array.isArray(entrada) ? entrada : String(entrada || "").split("\n"))
+    .map((x) => String(x || "").trim().slice(0, 200))
+    .filter((x) => x.length >= 3)
+    .slice(0, MAX_ITEMS);
+  return lista;
+}
+
 app.post("/api/trades", auth, needsEmail, async (req, res) => {
-  const { offerId, give } = req.body || {};
-  if (!give || give.trim().length < 3) return err(res, "validation_error", 422, "Describe qué ofreces tú");
-  if (hasMoney(give)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
+  const { offerId, give, items } = req.body || {};
+  const lista = normalizarItems(items ?? give);
+  if (!lista.length) return err(res, "validation_error", 422, "Describe qué ofreces tú");
+  if (lista.some(hasMoney)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
   const o = await q(`SELECT * FROM offers WHERE id=$1 AND status='active'`, [offerId]);
   if (!o.rowCount) return err(res, "not_found", 404, "Oferta no disponible");
   if (o.rows[0].owner_id === req.me.id) return err(res, "conflict", 409, "No puedes proponerte a ti mismo");
   const r = await q(
-    `INSERT INTO trades (code, offer_id, a_id, b_id, a_give, events)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-    [shortCode(), offerId, req.me.id, o.rows[0].owner_id, give.trim(),
+    `INSERT INTO trades (code, offer_id, a_id, b_id, a_give, a_items, events)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [shortCode(), offerId, req.me.id, o.rows[0].owner_id, lista.join(" + "), JSON.stringify(lista),
      JSON.stringify([{ at: new Date().toISOString(), by: req.me.id, to: "proposal" }])]
   );
   await notify([o.rows[0].owner_id], "proposal", null);
   res.status(201).json({ id: r.rows[0].id });
+});
+
+// Cada parte puede ajustar su lista mientras el contrato no esté firmado por nadie
+app.post("/api/trades/:id/items", auth, needsEmail, async (req, res) => {
+  const t = await q(`SELECT * FROM trades WHERE id=$1`, [req.params.id]);
+  if (!t.rowCount) return err(res, "not_found", 404, "Intercambio no encontrado");
+  const tr = t.rows[0];
+  const soyA = tr.a_id === req.me.id, soyB = tr.b_id === req.me.id;
+  if (!soyA && !soyB) return err(res, "not_found", 404, "Intercambio no encontrado");
+  if (!["proposal", "contract"].includes(tr.state) || tr.flags.signedA || tr.flags.signedB)
+    return err(res, "state_invalid", 409, "Los términos ya no se pueden cambiar: hay firmas en el contrato");
+  const lista = normalizarItems(req.body?.items);
+  if (soyA && !lista.length) return err(res, "validation_error", 422, "Describe qué ofreces tú");
+  if (lista.some(hasMoney)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
+  if (soyA) await q(`UPDATE trades SET a_items=$2, a_give=$3 WHERE id=$1`, [tr.id, JSON.stringify(lista), lista.join(" + ")]);
+  else await q(`UPDATE trades SET b_items=$2 WHERE id=$1`, [tr.id, JSON.stringify(lista)]);
+  await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+    [tr.id, "✏️ Los términos del contrato se han modificado. Revísalos antes de firmar."]);
+  res.json({ ok: true });
 });
 
 app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
@@ -679,8 +715,12 @@ app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
 
 app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   const t = await getTrade(req.params.id);
-  if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
-  if (!["in_progress", "post_proof"].includes(t.state)) return err(res, "state_invalid", 409, "El chat se abre durante el intercambio");
+  const esParte = t && (t.a_id === req.me.id || t.b_id === req.me.id);
+  const soyMediador = t && t.mediator_id === req.me.id;
+  if (!t || (!esParte && !soyMediador)) return err(res, "not_found", 404, "Intercambio no encontrado");
+  const chatAbierto = ["in_progress", "post_proof"].includes(t.state)
+    || (t.flags.mediationRequested && ["contract", "pre_proof"].includes(t.state));
+  if (!chatAbierto) return err(res, "state_invalid", 409, "El chat se abre durante el intercambio");
   const texto = String(req.body?.text || "").trim().slice(0, 2000);
   if (!texto) return err(res, "validation_error", 422, "Mensaje vacío");
   if (hasMoney(texto)) {
@@ -694,6 +734,49 @@ app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   if (hasOffsite(texto))
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
       [t.id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección. Es la táctica nº1 de los estafadores."]);
+  res.json({ ok: true });
+});
+
+/* ---------- Mediación ---------- */
+const esMediador = (u) => ["mediator", "moderator", "admin"].includes(u.role);
+
+app.post("/api/trades/:id/mediation", auth, needsEmail, async (req, res) => {
+  const t = await getTrade(req.params.id);
+  if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
+  if (!["contract", "pre_proof", "in_progress", "post_proof"].includes(t.state))
+    return err(res, "state_invalid", 409, "Solo puedes pedir mediación en un intercambio en marcha");
+  if (t.flags.mediationRequested) return err(res, "conflict", 409, "Ya se pidió mediación en este intercambio");
+  await setTrade(t, { mediationRequested: true, mediationBy: req.me.id }, null, req.me.id, null);
+  await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+    [t.id, "🤝 Se ha solicitado la ayuda de un mediador. Esperen a que alguien tome el caso."]);
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/trades/:id/mediation/take", auth, async (req, res) => {
+  if (!esMediador(req.me)) return err(res, "forbidden", 403, "Solo los mediadores pueden tomar casos");
+  const t = await getTrade(req.params.id);
+  if (!t) return err(res, "not_found", 404, "Intercambio no encontrado");
+  if (!t.flags.mediationRequested) return err(res, "state_invalid", 409, "Nadie ha pedido mediación en este intercambio");
+  if (t.mediator_id) return err(res, "conflict", 409, "Otro mediador ya tomó este caso");
+  if (t.a_id === req.me.id || t.b_id === req.me.id) return err(res, "forbidden", 403, "No puedes mediar un intercambio del que eres parte");
+  await q(`UPDATE trades SET mediator_id=$2 WHERE id=$1`, [t.id, req.me.id]);
+  await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'verde',$2)`,
+    [t.id, `🤝 ${req.me.display_name} ha tomado la mediación de este intercambio.`]);
+  await audit(req.me.id, "mediation.taken", t.id, "Mediación asumida");
+  await notify([t.a_id, t.b_id], "accepted", t.code);
+  res.json({ ok: true });
+});
+
+app.post("/api/trades/:id/mediation/close", auth, async (req, res) => {
+  const t = await getTrade(req.params.id);
+  if (!t) return err(res, "not_found", 404, "Intercambio no encontrado");
+  if (t.mediator_id !== req.me.id) return err(res, "forbidden", 403, "No eres el mediador de este intercambio");
+  const nota = String(req.body?.note || "").trim().slice(0, 300);
+  await q(`UPDATE trades SET mediator_id=NULL WHERE id=$1`, [t.id]);
+  await setTrade(t, { mediationRequested: false, mediationBy: null }, null, req.me.id, null);
+  await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'verde',$2)`,
+    [t.id, "🤝 Mediación cerrada." + (nota ? " " + nota : "")]);
+  await audit(req.me.id, "mediation.closed", t.id, nota || "Sin nota");
   res.json({ ok: true });
 });
 

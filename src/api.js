@@ -52,7 +52,11 @@ export async function sync() {
 
 export async function createOffer(d) { await call("/offers", { method: "POST", body: d }); await sync(); }
 export async function removeOffer(id) { await call(`/offers/${id}`, { method: "DELETE" }); await sync(); }
-export async function propose(offerId, give) { await call("/trades", { method: "POST", body: { offerId, give } }); await sync(); }
+export async function propose(offerId, items) { await call("/trades", { method: "POST", body: { offerId, items } }); await sync(); }
+export async function setItems(id, items) { await call(`/trades/${id}/items`, { method: "POST", body: { items } }); await sync(); }
+export async function askMediation(id) { await call(`/trades/${id}/mediation`, { method: "POST" }); await sync(); }
+export async function takeMediation(id) { await call(`/trades/${id}/mediation/take`, { method: "POST" }); await sync(); }
+export async function closeMediation(id, note) { await call(`/trades/${id}/mediation/close`, { method: "POST", body: { note } }); await sync(); }
 export async function tradeAction(id, action, value, image) { await call(`/trades/${id}/action`, { method: "POST", body: { action, value, image } }); await sync(); }
 export async function sendMessage(id, text, confirmOffsite) { await call(`/trades/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
 export async function reportOffer(id, reason) { await call(`/offers/${id}/report`, { method: "POST", body: { reason } }); await sync(); }
