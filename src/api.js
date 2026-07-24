@@ -37,13 +37,26 @@ export async function register(d) { const r = await call("/register", { method: 
 export async function login(d) { const r = await call("/login", { method: "POST", body: d }); setToken(r.token); await sync(); }
 export function logout() { setToken(null); snap = null; }
 
-export async function sync() { if (!getToken()) { snap = null; return; } snap = await call("/state"); }
+let etag = null;
+export async function sync() {
+  if (!getToken()) { snap = null; etag = null; return; }
+  const res = await fetch(BASE + "/state", {
+    headers: { Authorization: "Bearer " + getToken(), ...(etag ? { "If-None-Match": etag } : {}) },
+  });
+  if (res.status === 304) return;            // nada cambió: ahorra datos y batería
+  if (res.status === 401) { setToken(null); snap = null; etag = null; throw new Error("Sesión caducada, entra de nuevo"); }
+  if (!res.ok) throw new Error("Error de conexión con el servidor");
+  etag = res.headers.get("ETag");
+  snap = await res.json();
+}
 
 export async function createOffer(d) { await call("/offers", { method: "POST", body: d }); await sync(); }
 export async function removeOffer(id) { await call(`/offers/${id}`, { method: "DELETE" }); await sync(); }
 export async function propose(offerId, give) { await call("/trades", { method: "POST", body: { offerId, give } }); await sync(); }
 export async function tradeAction(id, action, value, image) { await call(`/trades/${id}/action`, { method: "POST", body: { action, value, image } }); await sync(); }
-export async function sendMessage(id, text) { await call(`/trades/${id}/message`, { method: "POST", body: { text } }); await sync(); }
+export async function sendMessage(id, text, confirmOffsite) { await call(`/trades/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
+export async function reportOffer(id, reason) { await call(`/offers/${id}/report`, { method: "POST", body: { reason } }); await sync(); }
+export async function staffRemoveOffer(id, reason) { await call(`/offers/${id}/remove`, { method: "POST", body: { reason } }); await sync(); }
 export async function openDispute(tradeId, claim) { await call("/disputes", { method: "POST", body: { tradeId, claim } }); await sync(); }
 export async function defend(id, text) { await call(`/disputes/${id}/defense`, { method: "POST", body: { text } }); await sync(); }
 export async function decide(id, body) { await call(`/disputes/${id}/decide`, { method: "POST", body }); await sync(); }

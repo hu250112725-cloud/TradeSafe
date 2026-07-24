@@ -197,7 +197,7 @@ app.get("/api/images/:id", async (req, res) => {
   const img = r.rows[0];
   const uR = await q(`SELECT role FROM users WHERE id=$1`, [viewer.sub]);
   const esStaff = ["moderator", "admin"].includes(uR.rows[0]?.role);
-  let ok = esStaff || img.owner_id === viewer.sub;
+  let ok = esStaff || img.owner_id === viewer.sub || img.kind === "origin";
   if (!ok && img.trade_id) {
     const t = await q(`SELECT 1 FROM trades WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [img.trade_id, viewer.sub]);
     ok = t.rowCount > 0;
@@ -229,6 +229,19 @@ app.post("/api/verification", auth, async (req, res) => {
 
 /* ---------- 2. Caducidad automática de intercambios inactivos ---------- */
 const EXPIRE_EVENT = `events || jsonb_build_array(jsonb_build_object('at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'by', null, 'to', 'expired'))`;
+// Borra capturas de intercambios cerrados hace más de 60 días.
+// Nunca toca las de intercambios con disputa (son evidencia).
+async function limpiarImagenes() {
+  await q(`DELETE FROM images WHERE trade_id IN (
+      SELECT t.id FROM trades t
+      WHERE t.state IN ('closed','cancelled')
+        AND (t.events->-1->>'at')::timestamptz < now() - interval '60 days'
+        AND NOT EXISTS (SELECT 1 FROM disputes d WHERE d.trade_id = t.id))`);
+  // Verificaciones ya aprobadas: solo se conserva 30 días
+  await q(`DELETE FROM images WHERE kind='verification' AND created_at < now() - interval '30 days'
+           AND owner_id IN (SELECT id FROM users WHERE verified = true)`);
+}
+
 async function expireStale() {
   await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
            WHERE state IN ('proposal','contract','pre_proof')
@@ -239,8 +252,14 @@ async function expireStale() {
 }
 
 /* ---------- Estado (una sola llamada trae todo lo visible) ---------- */
+let ultimaLimpieza = 0;
 app.get("/api/state", authAny, async (req, res) => {
   await expireStale();
+  // Limpieza de imágenes como mucho una vez por hora por instancia
+  if (Date.now() - ultimaLimpieza > 3600000) {
+    ultimaLimpieza = Date.now();
+    limpiarImagenes().catch(() => { /* no debe afectar la respuesta */ });
+  }
   const me = req.me;
   const esStaff = ["moderator", "admin"].includes(me.role);
 
@@ -254,6 +273,7 @@ app.get("/api/state", authAny, async (req, res) => {
          FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
       (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
+      (SELECT max(t.created_at) FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS last_trade,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
@@ -278,18 +298,29 @@ app.get("/api/state", authAny, async (req, res) => {
     ? await q(`SELECT * FROM disputes ORDER BY created_at DESC LIMIT 200`)
     : await q(`SELECT * FROM disputes WHERE reporter_id=$1 OR accused_id=$1 ORDER BY created_at DESC`, [me.id]);
 
+  // Huella del estado para evitar reenviar lo mismo cada 8 segundos
   const sanctionsR = await q(`SELECT s.*, d.decided_by AS dispute_decided_by FROM sanctions s
     LEFT JOIN disputes d ON d.id = s.dispute_id
     WHERE s.expires IS NULL OR s.expires>now() ORDER BY s.created_at DESC LIMIT 200`);
   const auditR = me.role === "admin" ? await q(`SELECT * FROM audit ORDER BY id DESC LIMIT 200`) : { rows: [] };
+  const reportsR = esStaff
+    ? await q(`SELECT a.id, a.actor_id, a.target, a.reason, a.created_at, o.owner_id, o.data, o.status
+               FROM audit a JOIN offers o ON o.id::text = a.target
+               WHERE a.action='offer.report' AND o.status='active' ORDER BY a.id DESC LIMIT 100`)
+    : { rows: [] };
 
-  res.json({
+  const cuerpo = {
     me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code, emailVerified: me.email_verified !== false },
     users: usersR.rows.map((u) => ({
       id: u.id, displayName: u.display_name, trainerName: u.trainer_name, role: u.role, status: u.status,
       verified: u.verified, createdAt: u.created_at,
       trades: u.trades_done, rating: u.rating, sanctions: u.sanctions_n,
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
+      lastTrade: u.last_trade,
+      rank: u.sanctions_n > 0 ? "marcado"
+        : u.trades_done >= 100 ? "oro"
+        : u.trades_done >= 25 ? "plata"
+        : u.trades_done >= 5 ? "bronce" : "novato",
       ...(esStaff ? { verifCode: u.verif_code, verifImage: u.verif_image, dupFriend: u.dup_friend > 0, dupFp: u.dup_fp > 0 } : {}),
     })),
     offers: offersR.rows.map((o) => ({ id: o.id, ownerId: o.owner_id, status: o.status, createdAt: o.created_at, ...o.data })),
@@ -312,12 +343,24 @@ app.get("/api/state", authAny, async (req, res) => {
       ...(esStaff ? { disputeDecidedBy: s.dispute_decided_by } : {}),
     })),
     audit: auditR.rows.map((a) => ({ id: a.id, actorId: a.actor_id, action: a.action, target: a.target, reason: a.reason, at: a.created_at })),
-  });
+    offerReports: reportsR.rows.map((r) => ({
+      id: r.id, offerId: r.target, byId: r.actor_id, ownerId: r.owner_id,
+      species: r.data?.species, reason: r.reason, at: r.created_at,
+    })),
+  };
+  const etag = '"' + crypto.createHash("sha1").update(JSON.stringify(cuerpo)).digest("hex") + '"';
+  res.setHeader("ETag", etag);
+  if (req.headers["if-none-match"] === etag) return res.status(304).end();
+  res.json(cuerpo);
 });
 
 /* ---------- Ofertas ---------- */
+const MAX_OFERTAS = 20;
 app.post("/api/offers", auth, needsEmail, async (req, res) => {
   const b = req.body || {};
+  const n = await q(`SELECT count(*)::int AS n FROM offers WHERE owner_id=$1 AND status='active'`, [req.me.id]);
+  if (n.rows[0].n >= MAX_OFERTAS)
+    return err(res, "limit_reached", 429, `Máximo ${MAX_OFERTAS} ofertas activas. Retira alguna para publicar otra.`);
   if (!b.species) return err(res, "validation_error", 422, "Falta la especie");
   if (!b.wants || b.wants.length < 3) return err(res, "validation_error", 422, "Describe qué buscas a cambio");
   if (hasMoney(b.wants) || hasMoney(b.species))
@@ -332,12 +375,36 @@ app.post("/api/offers", auth, needsEmail, async (req, res) => {
     moves: (Array.isArray(b.moves) ? b.moves : []).map((m) => String(m).trim()).filter(Boolean).slice(0, 4),
     origin: b.origin || null, wants: String(b.wants).trim(), legality: leg,
   };
+  let originImage = null;
+  if (b.originImage) {
+    try { originImage = await saveImage(req.me.id, null, "origin", b.originImage); }
+    catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen de origen inválida"); }
+    data.originImage = originImage;
+  }
   const r = await q(`INSERT INTO offers (owner_id, data) VALUES ($1,$2) RETURNING id`, [req.me.id, data]);
   res.status(201).json({ id: r.rows[0].id });
 });
 
 app.delete("/api/offers/:id", auth, async (req, res) => {
   await q(`UPDATE offers SET status='removed' WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  res.json({ ok: true });
+});
+
+app.post("/api/offers/:id/report", auth, needsEmail, async (req, res) => {
+  const o = await q(`SELECT * FROM offers WHERE id=$1`, [req.params.id]);
+  if (!o.rowCount) return err(res, "not_found", 404, "Oferta no encontrada");
+  if (o.rows[0].owner_id === req.me.id) return err(res, "conflict", 409, "No puedes reportar tu propia oferta");
+  const motivo = String(req.body?.reason || "").trim();
+  if (motivo.length < 10) return err(res, "validation_error", 422, "Explica brevemente el motivo (mínimo 10 caracteres)");
+  const ya = await q(`SELECT 1 FROM audit WHERE action='offer.report' AND actor_id=$1 AND target=$2`, [req.me.id, o.rows[0].id]);
+  if (ya.rowCount) return err(res, "conflict", 409, "Ya reportaste esta oferta");
+  await audit(req.me.id, "offer.report", o.rows[0].id, motivo.slice(0, 500));
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/offers/:id/remove", auth, staff, async (req, res) => {
+  await q(`UPDATE offers SET status='removed' WHERE id=$1`, [req.params.id]);
+  await audit(req.me.id, "offer.removed_by_staff", req.params.id, String(req.body?.reason || "").slice(0, 300));
   res.json({ ok: true });
 });
 
@@ -443,6 +510,8 @@ app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
       [t.id, "🚫 Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
     return res.json({ ok: true, blocked: true });
   }
+  if (hasOffsite(texto) && !req.body?.confirmOffsite)
+    return err(res, "offsite_warning", 409, "Llevar el trato fuera de TradeSafe elimina tu protección y es la táctica nº1 de los estafadores. Confirma si aun así quieres enviarlo.");
   await q(`INSERT INTO messages (trade_id, sender_id, body) VALUES ($1,$2,$3)`, [t.id, req.me.id, texto]);
   if (hasOffsite(texto))
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
@@ -456,6 +525,12 @@ app.post("/api/disputes", auth, needsEmail, async (req, res) => {
   if (!claim || claim.trim().length < 20) return err(res, "validation_error", 422, "Describe lo ocurrido (mínimo 20 caracteres)");
   const t = await getTrade(tradeId);
   if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
+  const yaHay = await q(`SELECT 1 FROM disputes WHERE trade_id=$1 AND status='open'`, [t.id]);
+  if (yaHay.rowCount) return err(res, "conflict", 409, "Ya hay una disputa abierta para este intercambio");
+  const previas = await q(`SELECT count(*)::int AS n FROM disputes WHERE trade_id=$1 AND reporter_id=$2`, [t.id, req.me.id]);
+  if (previas.rows[0].n >= 2) return err(res, "conflict", 409, "Ya reportaste este intercambio dos veces; contacta al staff");
+  if (!["in_progress", "post_proof", "closed"].includes(t.state))
+    return err(res, "state_invalid", 409, "Solo puedes reportar un intercambio que ya esté en curso o cerrado");
   const accused = t.a_id === req.me.id ? t.b_id : t.a_id;
   await q(`INSERT INTO disputes (trade_id, reporter_id, accused_id, claim, deadline)
            VALUES ($1,$2,$3,$4, now() + interval '72 hours')`, [t.id, req.me.id, accused, claim.trim()]);

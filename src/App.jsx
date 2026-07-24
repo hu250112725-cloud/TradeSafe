@@ -15,12 +15,18 @@ const Campo = ({ label, error, children }) => (
   <label className="campo"><span>{label}</span>{children}{error && <div className="error">{error}</div>}</label>
 );
 
-function Rep({ userId }) {
+const RANGOS = { novato: "rankNovato", bronce: "rankBronce", plata: "rankPlata", oro: "rankOro", marcado: "rankMarcado" };
+
+function Rep({ userId, onFicha }) {
   const u = userById(userId);
   if (!u) return null;
   return (
     <div className="tags">
-      <b style={{ fontSize: 14 }}>{u.displayName}</b>
+      <b style={{ fontSize: 14, cursor: onFicha ? "pointer" : "default", textDecoration: onFicha ? "underline" : "none", textUnderlineOffset: 3 }}
+        onClick={onFicha ? () => onFicha(u.id) : undefined}>{u.displayName}</b>
+      {u.rank && u.rank !== "novato" && (
+        <span className={`tag ${u.rank === "oro" ? "oro" : u.rank === "marcado" ? "lacre" : "tenue"}`}>{tx()[RANGOS[u.rank]]}</span>
+      )}
       {u.verified ? <span className="tag verde">{tx().verificado}</span> : <span className="tag tenue">{tx().sinVerificar}</span>}
       <span className="tag tenue">{u.trades} {tx().trades}</span>
       {u.rating && <span className="tag oro">★ {u.rating}</span>}
@@ -277,7 +283,7 @@ function Publicar({ refresh, done }) {
       species: f.species, level: f.level || null, nature: f.nature, ability: f.ability,
       ball: f.ball, isShiny: !!f.shiny,
       moves: (f.moves || "").split(",").map((m) => m.trim()).filter(Boolean),
-      origin: f.origin, wants: f.wants,
+      origin: f.origin, wants: f.wants, originImage: f.originImage,
     });
     done();
   });
@@ -290,6 +296,12 @@ function Publicar({ refresh, done }) {
         <Campo label={tx().lblEspecie}><input value={f.species || ""} onChange={set("species")} placeholder={tx().phEspecie} /></Campo>
         <label className="check"><input type="checkbox" checked={!!f.shiny} onChange={set("shiny")} /> {tx().esShiny}</label>
         <Campo label={tx().lblBuscas}><textarea value={f.wants || ""} onChange={set("wants")} placeholder={tx().phBuscas} /></Campo>
+        <div style={{ marginBottom: 12 }}>
+          {f.originImage
+            ? <p className="txt-s" style={{ color: "var(--verde)" }}>{tx().conPrueba} ✓</p>
+            : <button className="btn mini secundario" onClick={async () => { const img = await pickImage(); if (img) setF({ ...f, originImage: img }); }}>{tx().lblPruebaOrigen}</button>}
+          <p className="txt-xs suave mt-6">{tx().ayudaPruebaOrigen}</p>
+        </div>
         <button className="enlace-volver" style={{ marginBottom: 12 }} onClick={() => setDetalles(!detalles)}>
           {detalles ? tx().menosDetalles : tx().masDetalles}
         </button>
@@ -317,11 +329,14 @@ function Publicar({ refresh, done }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders }) {
+function Mercado({ me, refresh, onOffenders, onFicha }) {
   const [open, setOpen] = useState(null);
   const [give, setGive] = useState("");
   const [busca, setBusca] = useState("");
   const [soloShiny, setSoloShiny] = useState(false);
+  const [reportando, setReportando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [reportado, setReportado] = useState(false);
   const { run, busy, err } = useRun(refresh);
   const offers = api.snap.offers.filter((o) => o.status === "active")
     .filter((o) => !soloShiny || o.isShiny)
@@ -360,12 +375,21 @@ function Mercado({ me, refresh, onOffenders }) {
         </div>
         <div className="ficha mt-14">
           <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().ofrecidoPor}</div>
-          <Rep userId={o.ownerId} />
+          <Rep userId={o.ownerId} onFicha={onFicha} />
           {sanctionsOf(o.ownerId).map((s) => (
             <div className="mt-10" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
           ))}
           {userById(o.ownerId)?.newAccount && <div className="mt-10"><Aviso tipo="lacre">{tx().avisoCuentaNueva}</Aviso></div>}
         </div>
+        {o.originImage && (
+          <div className="ficha mt-14">
+            <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().pruebaOrigen}</div>
+            <a href={api.imageUrl(o.originImage)} target="_blank" rel="noreferrer">
+              <img src={api.imageUrl(o.originImage)} alt={tx().pruebaOrigen}
+                style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 8, border: "2px solid var(--tinta)", background: "#fff" }} />
+            </a>
+          </div>
+        )}
         {o.ownerId === me.id ? (
           <button className="btn peligro mt-14" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setOpen(null); })}>
             {tx().retirarOferta}
@@ -380,6 +404,17 @@ function Mercado({ me, refresh, onOffenders }) {
             </button>
           </div>
         )}
+        {o.ownerId !== me.id && (reportado ? (
+          <div className="mt-14"><Aviso tipo="verde">{tx().reporteEnviado}</Aviso></div>
+        ) : reportando ? (
+          <div className="ficha mt-14">
+            <Campo label={tx().lblMotivoReporte}><textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} /></Campo>
+            <button className="btn peligro" disabled={busy} onClick={() => run(async () => { await api.reportOffer(o.id, motivo); setReportando(false); setMotivo(""); setReportado(true); })}>{tx().btnEnviarReporteOferta}</button>
+            <button className="btn secundario" onClick={() => setReportando(false)}>{tx().btnCancelar}</button>
+          </div>
+        ) : (
+          <button className="btn mini secundario mt-14" onClick={() => setReportando(true)}>{tx().reportarOferta}</button>
+        ))}
       </div>
     );
   }
@@ -403,9 +438,50 @@ function Mercado({ me, refresh, onOffenders }) {
             {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
           </div>
           <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx().busca} {o.wants}</p>
+          {o.originImage && <span className="tag verde mt-6" style={{ display: "inline-block" }}>{tx().conPrueba}</span>}
           <div className="mt-10"><Rep userId={o.ownerId} /></div>
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ================= Ficha pública del entrenador ================= */
+function FichaUsuario({ userId, onBack }) {
+  const u = userById(userId);
+  if (!u) return null;
+  const sanc = sanctionsOf(userId);
+  const ofertas = api.snap.offers.filter((o) => o.ownerId === userId && o.status === "active");
+  return (
+    <div>
+      <button className="enlace-volver" onClick={onBack}>{tx().volverMercado}</button>
+      <h1 className="h1" style={{ margin: "14px 0" }}>{tx().fichaPublica}</h1>
+      <div className="ticket">
+        <div className="ticket-cuerpo">
+          <div className="h2">{u.displayName}</div>
+          <div className="txt-xs suave">{tx().entrenador} {u.trainerName}</div>
+          <div className="tags mt-10">
+            {u.rank && <span className={`tag ${u.rank === "oro" ? "oro" : u.rank === "marcado" ? "lacre" : "tenue"}`}>{tx()[RANGOS[u.rank]]}</span>}
+            {u.verified ? <span className="tag verde">{tx().verificado}</span> : <span className="tag tenue">{tx().sinVerificar}</span>}
+            <span className="tag tenue">{u.trades} {tx().trades}</span>
+            {u.rating && <span className="tag oro">★ {u.rating}</span>}
+            {u.newAccount && <span className="tag lacre">{tx().cuentaNueva}</span>}
+          </div>
+          <div className="txt-xs suave mt-10">{tx().miembroDesde} {fecha(u.createdAt)}</div>
+          <div className="txt-xs suave">{u.lastTrade ? `${tx().ultimoTrade} ${fecha(u.lastTrade)}` : tx().sinTradesAun}</div>
+        </div>
+      </div>
+      {sanc.map((s) => (
+        <div className="mt-14" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
+      ))}
+      {ofertas.length > 0 && (
+        <div className="ficha mt-14">
+          <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().mercado}</div>
+          {ofertas.map((o) => (
+            <div key={o.id} className="fila"><span className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</span><span className="txt-xs suave">{o.wants?.slice(0, 30)}</span></div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -456,6 +532,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const [msg, setMsg] = useState("");
   const [claim, setClaim] = useState("");
   const [showDispute, setShowDispute] = useState(false);
+  const [offsitePend, setOffsitePend] = useState(null);
   const [rated, setRated] = useState(0);
   const { run, busy, err } = useRun(refresh);
   if (!t) return null;
@@ -470,6 +547,16 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const miDisputa = api.snap.disputes.find((d) => d.tradeId === t.id);
   const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
   const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
+  const enviar = async () => {
+    const texto = msg.trim();
+    if (!texto) return;
+    setMsg("");
+    try { await api.sendMessage(t.id, texto); refresh(); }
+    catch (e) {
+      if (String(e.message).includes("táctica") || String(e.message).includes("tactic")) setOffsitePend(texto);
+      else { setMsg(texto); run(() => { throw e; }); }
+    }
+  };
 
   return (
     <div>
@@ -641,11 +728,21 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             </div>
             <div className="chat-form">
               <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && msg.trim()) { run(() => api.sendMessage(t.id, msg.trim())); setMsg(""); } }}
+                onKeyDown={(e) => { if (e.key === "Enter") enviar(); }}
                 placeholder={tx().phMensaje} />
-              <button className="btn mini" disabled={busy} onClick={() => { if (msg.trim()) { run(() => api.sendMessage(t.id, msg.trim())); setMsg(""); } }}>{tx().btnEnviar}</button>
+              <button className="btn mini" disabled={busy} onClick={enviar}>{tx().btnEnviar}</button>
             </div>
           </div>
+          {offsitePend && (
+            <div className="ficha mt-14" style={{ borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }}>
+              <Aviso tipo="lacre">{tx().avisoOffsite}</Aviso>
+              <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                <button className="btn mini secundario" onClick={() => setOffsitePend(null)}>{tx().btnCancelar}</button>
+                <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy}
+                  onClick={() => { run(() => api.sendMessage(t.id, offsitePend, true)); setOffsitePend(null); }}>{tx().btnEnviarIgual}</button>
+              </div>
+            </div>
+          )}
           {!showDispute ? (
             <button className="btn peligro mt-14" onClick={() => setShowDispute(true)}>{tx().btnAbrirDisputa}</button>
           ) : (
@@ -808,12 +905,13 @@ function Staff({ me, refresh }) {
   const pendVerif = api.snap.users.filter((u) => !u.verified && u.status === "active");
   const abiertas = api.snap.disputes.filter((d) => d.status === "open");
   const apelaciones = api.snap.sanctions.filter((s) => s.appealStatus === "open");
+  const reportes = api.snap.offerReports || [];
 
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().panelStaff}</h1>
       <div className="tags" style={{ marginBottom: 14 }}>
-        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ...(esAdmin ? [["usuarios", tx().tUsuarios], ["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
+        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ["reportes", tx().tReportes(reportes.length)], ...(esAdmin ? [["usuarios", tx().tUsuarios], ["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
           <button key={id} className={`btn mini ${pane === id ? "" : "secundario"}`} onClick={() => setPane(id)}>{l}</button>
         ))}
       </div>
@@ -907,6 +1005,20 @@ function Staff({ me, refresh }) {
           );
         }))}
 
+      {pane === "reportes" && (reportes.length === 0 ? <Vacio icono="⚑">{tx().sinReportes}</Vacio> :
+        reportes.map((r) => (
+          <div key={r.id} className="ficha" style={{ marginBottom: 14 }}>
+            <div className="tags">
+              <b>{r.species}</b>
+              <span className="tag tenue">{tx().ofrecidoPor} {userById(r.ownerId)?.displayName ?? "—"}</span>
+              <span className="tag lacre">{tx().reportadaPor} {userById(r.byId)?.displayName ?? "—"}</span>
+            </div>
+            <p className="txt-s suave mt-6">{r.reason}</p>
+            <button className="btn mini peligro mt-10" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy}
+              onClick={() => run(() => api.staffRemoveOffer(r.offerId, r.reason))}>{tx().btnRetirarOferta}</button>
+          </div>
+        )))}
+
       {pane === "usuarios" && esAdmin && (
         <div className="ficha" style={{ overflowX: "auto" }}>
           <table className="tabla">
@@ -974,6 +1086,7 @@ export default function App() {
   const [verInfractores, setVerInfractores] = useState(false);
   const [verNotis, setVerNotis] = useState(false);
   const [abrirTrade, setAbrirTrade] = useState(null);
+  const [verFicha, setVerFicha] = useState(null);
   const [vistas, setVistas] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ts_notis_vistas") || "[]")); } catch { return new Set(); }
   });
@@ -1087,10 +1200,12 @@ export default function App() {
           <AuthScreen refresh={refresh} hasUsers={hasUsers} />
         ) : me.status === "suspended" ? (
           <Perfil me={me} refresh={refresh} />
+        ) : verFicha ? (
+          <FichaUsuario userId={verFicha} onBack={() => setVerFicha(null)} />
         ) : verInfractores ? (
           <Infractores onBack={() => setVerInfractores(false)} />
         ) : tab === "mercado" ? (
-          <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} />
+          <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha} />
         ) : tab === "publicar" ? (
           <Publicar refresh={refresh} done={() => setTab("mercado")} />
         ) : tab === "trades" ? (
@@ -1106,8 +1221,8 @@ export default function App() {
         <nav className="tabbar">
           <div className="tabbar-inner">
             {tabs.map(([id, label]) => (
-              <button key={id} className={`tab ${tab === id && !verInfractores ? "activa" : ""}`}
-                onClick={() => { setTab(id); setVerInfractores(false); }}>
+              <button key={id} className={`tab ${tab === id && !verInfractores && !verFicha ? "activa" : ""}`}
+                onClick={() => { setTab(id); setVerInfractores(false); setVerFicha(null); }}>
                 {label}
               </button>
             ))}
