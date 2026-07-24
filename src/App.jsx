@@ -88,6 +88,90 @@ function pickImage() {
   });
 }
 
+/* Construye la lista de avisos a partir del estado actual.
+   Cada aviso tiene una clave estable para saber si ya se mostró. */
+function calcularAvisos(me, esStaff) {
+  if (!api.snap || !me) return [];
+  const t9 = tx();
+  const out = [];
+  const nombre = (id) => userById(id)?.displayName ?? "—";
+  for (const t of api.snap.trades) {
+    const soyA = t.aId === me.id, soyB = t.bId === me.id;
+    if (!soyA && !soyB) continue;
+    const otro = nombre(soyA ? t.bId : t.aId);
+    const base = { tradeId: t.id, code: t.code, at: t.events?.at(-1)?.at || t.createdAt };
+    const push = (tipo, texto) => out.push({ ...base, key: `${t.id}:${tipo}:${t.state}`, texto });
+    if (t.state === "proposal" && soyB) push("proposal", t9.n_proposal(otro));
+    else if (t.state === "contract") {
+      const yoFirme = soyA ? t.signedA : t.signedB;
+      const otroFirmo = soyA ? t.signedB : t.signedA;
+      if (!yoFirme && otroFirmo) push("sign", t9.n_sign(otro));
+      else if (!yoFirme) push("accepted", t9.n_accepted);
+    }
+    else if (t.state === "pre_proof" && !(soyA ? t.proofA : t.proofB)) push("pre_proof", t9.n_pre_proof);
+    else if (t.state === "in_progress" && !(soyA ? t.deliveredA : t.deliveredB)) push("in_progress", t9.n_in_progress);
+    else if (t.state === "post_proof" && !(soyA ? t.confirmedA : t.confirmedB)) push("post_proof", t9.n_post_proof);
+    else if (t.state === "closed" && !(soyA ? t.ratingForB : t.ratingForA)) push("closed", t9.n_closed);
+    else if (t.state === "disputed") {
+      const d = api.snap.disputes.find((x) => x.tradeId === t.id && x.status === "open");
+      if (d && d.accusedId === me.id && !d.defense) push("disputed", t9.n_disputed);
+    }
+  }
+  for (const s of api.snap.sanctions.filter((x) => x.userId === me.id)) {
+    if (s.appealStatus === "upheld" || s.appealStatus === "overturned")
+      out.push({ key: `sanc:${s.id}:${s.appealStatus}`, texto: t9.n_appeal, at: s.at, tab: "perfil" });
+    else if (s.appealStatus === "none")
+      out.push({ key: `sanc:${s.id}:new`, texto: t9.n_sanction, at: s.at, tab: "perfil" });
+  }
+  if (esStaff) {
+    for (const d of api.snap.disputes.filter((x) => x.status === "open" && x.reporterId !== me.id && x.accusedId !== me.id))
+      out.push({ key: `stf:disp:${d.id}`, texto: t9.n_staff_dispute, at: d.at, tab: "staff" });
+    for (const u of api.snap.users.filter((x) => !x.verified && x.status === "active" && x.verifImage))
+      out.push({ key: `stf:ver:${u.id}:${u.verifImage}`, texto: t9.n_staff_verif, at: u.createdAt, tab: "staff" });
+    for (const s of api.snap.sanctions.filter((x) => x.appealStatus === "open"))
+      out.push({ key: `stf:ape:${s.id}`, texto: t9.n_staff_appeal, at: s.appealedAt || s.at, tab: "staff" });
+  }
+  return out.sort((a, b) => new Date(b.at) - new Date(a.at));
+}
+
+/* Panel desplegable de notificaciones */
+function Notificaciones({ avisos, noLeidas, onAbrirTrade, onIrTab, onLeerTodo, onCerrar }) {
+  const [permiso, setPermiso] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+  return (
+    <div className="ficha" style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div className="eyebrow">{tx().notiTitulo}</div>
+        <button className="enlace-volver" onClick={onCerrar}>✕</button>
+      </div>
+      {permiso === "default" && (
+        <button className="btn mini secundario" style={{ marginBottom: 10 }}
+          onClick={async () => { try { setPermiso(await Notification.requestPermission()); } catch { /* no soportado */ } }}>
+          {tx().notiActivar}
+        </button>
+      )}
+      {permiso === "granted" && <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().notiActivas}</p>}
+      {permiso === "denied" && <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().notiBloqueadas}</p>}
+      {avisos.length === 0 ? (
+        <p className="txt-s suave">{tx().notiVacio}</p>
+      ) : (
+        <>
+          {avisos.slice(0, 12).map((a) => (
+            <button key={a.key} className="fila" style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #d8ded9", padding: "9px 0", cursor: "pointer", font: "inherit" }}
+              onClick={() => { a.tradeId ? onAbrirTrade(a.tradeId) : onIrTab(a.tab || "trades"); onCerrar(); }}>
+              <span className="txt-s">
+                {noLeidas.has(a.key) && <b style={{ color: "var(--lacre)" }}>● </b>}
+                {a.texto}
+              </span>
+              {a.code && <Sello code={a.code} />}
+            </button>
+          ))}
+          <button className="btn mini secundario mt-10" onClick={onLeerTodo}>{tx().notiMarcarLeidas}</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* Banner para confirmar el email con el código de 6 dígitos */
 function EmailBanner({ me, refresh }) {
   const [code, setCode] = useState("");
@@ -582,8 +666,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   );
 }
 
-function MisTrades({ me, refresh }) {
+function MisTrades({ me, refresh, abrir, onAbierto }) {
   const [open, setOpen] = useState(null);
+  useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
   const mine = api.snap.trades.filter((t) => t.aId === me.id || t.bId === me.id);
   if (open) return <TradeView trade={open} me={me} refresh={refresh} onBack={() => setOpen(null)} />;
   return (
@@ -887,6 +972,15 @@ export default function App() {
   const refresh = () => force();
   const [tab, setTab] = useState("mercado");
   const [verInfractores, setVerInfractores] = useState(false);
+  const [verNotis, setVerNotis] = useState(false);
+  const [abrirTrade, setAbrirTrade] = useState(null);
+  const [vistas, setVistas] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("ts_notis_vistas") || "[]")); } catch { return new Set(); }
+  });
+  const guardarVistas = (set) => {
+    setVistas(new Set(set));
+    try { localStorage.setItem("ts_notis_vistas", JSON.stringify([...set].slice(-200))); } catch { /* sin storage */ }
+  };
   const [phase, setPhase] = useState("cargando"); // cargando | sin-conexion | listo
   const [hasUsers, setHasUsers] = useState(true);
 
@@ -925,6 +1019,19 @@ export default function App() {
     return false;
   }).length + (esStaff ? api.snap.disputes.filter((d) => d.status === "open").length : 0);
   useEffect(() => { document.title = pendientes > 0 ? `(${pendientes}) TradeSafe` : "TradeSafe"; }, [pendientes]);
+  const avisos = me ? calcularAvisos(me, esStaff) : [];
+  const noLeidas = new Set(avisos.map((a) => a.key).filter((k) => !vistas.has(k)));
+
+  useEffect(() => {
+    if (!avisos.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const nuevos = avisos.filter((a) => !vistas.has(a.key));
+    if (!nuevos.length) return;
+    // Un solo aviso si hay varios, para no saturar
+    const texto = nuevos.length === 1 ? nuevos[0].texto : tx().pendientes(nuevos.length).replace("⚑ ", "");
+    try { new Notification("TradeSafe", { body: texto, icon: "/icon-192.png", tag: "tradesafe" }); } catch { /* nada */ }
+    const set = new Set(vistas); nuevos.forEach((a) => set.add(a.key)); guardarVistas(set);
+  }, [avisos.map((a) => a.key).join("|")]);
+
   const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar], ["trades", pendientes > 0 ? tx().tabTrades + " ●" : tx().tabTrades], ["perfil", tx().tabPerfil], ...(esStaff ? [["staff", tx().tabStaff]] : [])];
 
   return (
@@ -935,7 +1042,21 @@ export default function App() {
           <div className="masthead-sub">{tx().subtitulo}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <Sello code="BETA" verde />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {me && phase === "listo" && (
+              <button className="enlace-volver" style={{ fontSize: 20, textDecoration: "none", position: "relative", lineHeight: 1 }}
+                onClick={() => setVerNotis(!verNotis)} aria-label={tx().notiTitulo}>
+                🔔
+                {noLeidas.size > 0 && (
+                  <span style={{ position: "absolute", top: -4, right: -6, background: "var(--lacre)", color: "#fff",
+                    borderRadius: 999, fontSize: 10, fontWeight: 700, padding: "1px 5px", border: "1.5px solid var(--tinta)" }}>
+                    {noLeidas.size}
+                  </span>
+                )}
+              </button>
+            )}
+            <Sello code="BETA" verde />
+          </div>
           <button className="enlace-volver mono" style={{ fontSize: 11 }}
             onClick={() => { setLang(getLang() === "es" ? "en" : "es"); refresh(); }}>
             {getLang() === "es" ? "ES → EN" : "EN → ES"}
@@ -945,6 +1066,13 @@ export default function App() {
 
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
+        {me && phase === "listo" && verNotis && (
+          <Notificaciones avisos={avisos} noLeidas={noLeidas}
+            onAbrirTrade={(id) => { setTab("trades"); setVerInfractores(false); setAbrirTrade(id); }}
+            onIrTab={(t) => { setTab(t); setVerInfractores(false); }}
+            onLeerTodo={() => guardarVistas(new Set([...vistas, ...avisos.map((a) => a.key)]))}
+            onCerrar={() => setVerNotis(false)} />
+        )}
         {me && me.status === "active" && pendientes > 0 && tab !== "trades" && !verInfractores && phase === "listo" && (
           <button className="ficha" style={{ marginBottom: 14, borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }} onClick={() => setTab("trades")}>
             <b style={{ color: "var(--lacre)" }}>{tx().pendientes(pendientes)}</b>
@@ -966,7 +1094,7 @@ export default function App() {
         ) : tab === "publicar" ? (
           <Publicar refresh={refresh} done={() => setTab("mercado")} />
         ) : tab === "trades" ? (
-          <MisTrades me={me} refresh={refresh} />
+          <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)} />
         ) : tab === "perfil" ? (
           <Perfil me={me} refresh={refresh} />
         ) : (
