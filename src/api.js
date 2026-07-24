@@ -67,6 +67,10 @@ export async function deleteMe() { await call("/me", { method: "DELETE" }); logo
 export const exportMe = () => call("/me/export");
 export async function requestVerifCode() { const r = await call("/verification-code", { method: "POST" }); await sync(); return r.code; }
 export async function submitVerification(image) { await call("/verification", { method: "POST", body: { image } }); await sync(); }
+export async function addWish(d) { await call("/wishlist", { method: "POST", body: d }); await sync(); }
+export async function delWish(id) { await call(`/wishlist/${id}`, { method: "DELETE" }); await sync(); }
+export async function saveProfile(d) { await call("/me/showcase", { method: "POST", body: d }); await sync(); }
+export const getStats = () => call("/stats");
 export const imageUrl = (id) => `/api/images/${id}?token=${encodeURIComponent(getToken() || "")}`;
 export async function appeal(sanctionId, text) { await call(`/sanctions/${sanctionId}/appeal`, { method: "POST", body: { text } }); await sync(); }
 export async function verifyEmail(code) { await call("/email/verify", { method: "POST", body: { code } }); await sync(); }

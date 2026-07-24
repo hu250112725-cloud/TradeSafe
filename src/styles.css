@@ -26,6 +26,7 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: "Instrument Sans", system-ui, sans-serif;
   background-color: var(--papel);
+  /* trama de puntos de imprenta */
   background-image: radial-gradient(rgba(18, 26, 22, 0.06) 1px, transparent 1px);
   background-size: 18px 18px;
   color: var(--tinta);
@@ -35,9 +36,11 @@ body {
 .display { font-family: "Unbounded", system-ui, sans-serif; }
 .mono { font-family: "Chivo Mono", ui-monospace, monospace; }
 
+/* ---------- Marco de la app ---------- */
 .frame { max-width: 460px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; }
 .content { flex: 1; padding: 0 16px 110px; }
 
+/* ---------- Cabecera ---------- */
 .masthead {
   padding: 18px 16px 10px;
   display: flex; align-items: flex-end; justify-content: space-between; gap: 8px;
@@ -49,6 +52,7 @@ body {
   color: var(--tinta-suave); margin-top: 5px;
 }
 
+/* ---------- El sello (firma visual) ---------- */
 .sello {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: "Chivo Mono"; font-weight: 600; letter-spacing: 2px;
@@ -65,6 +69,7 @@ body {
 .sello.grande { font-size: 18px; padding: 8px 16px; }
 .sello.verde { color: var(--verde); border-color: var(--verde); outline-color: var(--verde); background: var(--cielo); }
 
+/* ---------- Fichas (cards) ---------- */
 .ficha {
   background: var(--papel-alto);
   border: 2px solid var(--tinta);
@@ -76,6 +81,7 @@ body {
 button.ficha { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; transition: transform 0.08s; }
 button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--tinta); }
 
+/* ---------- Ticket con perforación ---------- */
 .ticket {
   background: var(--papel-alto);
   border: 2px solid var(--tinta);
@@ -90,6 +96,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
   padding: 10px 14px;
   background: var(--cielo);
 }
+/* perforaciones: dos muescas que "muerden" la línea de corte */
 .ticket-talon::before, .ticket-talon::after {
   content: ""; position: absolute; top: -9px; width: 16px; height: 16px;
   background: var(--papel); border: 2px solid var(--tinta); border-radius: 50%;
@@ -99,6 +106,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .ticket-talon.lacre { background: var(--lacre-papel); }
 .ticket-talon.oro { background: var(--oro-papel); }
 
+/* ---------- Tipografía utilitaria ---------- */
 .h1 { font-family: "Unbounded"; font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
 .h2 { font-family: "Unbounded"; font-weight: 700; font-size: 15px; }
 .eyebrow {
@@ -109,6 +117,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .txt-s { font-size: 13px; }
 .txt-xs { font-size: 11.5px; }
 
+/* ---------- Etiquetas ---------- */
 .tag {
   display: inline-block; font-size: 11px; font-weight: 600;
   border: 1.5px solid var(--tinta); border-radius: 999px;
@@ -120,6 +129,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .tag.tenue { border-color: var(--tinta-suave); color: var(--tinta-suave); background: transparent; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
+/* ---------- Botones ---------- */
 .btn {
   display: block; width: 100%;
   font-family: "Unbounded"; font-weight: 700; font-size: 13px;
@@ -136,6 +146,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .btn.mini { width: auto; padding: 8px 14px; font-size: 11px; box-shadow: 3px 3px 0 var(--tinta); }
 .btn + .btn { margin-top: 10px; }
 
+/* ---------- Avisos ---------- */
 .aviso {
   border: 2px solid var(--tinta); border-left-width: 8px;
   border-radius: 8px; padding: 10px 12px; font-size: 13px;
@@ -146,6 +157,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .aviso.verde { border-color: var(--verde); background: var(--cielo); color: #084a2a; }
 .aviso b { font-weight: 700; }
 
+/* ---------- Vía de sellos (stepper) ---------- */
 .via { display: flex; align-items: center; gap: 0; margin: 14px 0 4px; }
 .via-punto {
   width: 26px; height: 26px; border-radius: 50%;
@@ -159,6 +171,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .via-linea.pendiente { background: transparent; border-top: 2px dashed var(--tinta-suave); }
 .via-etiqueta { font-family: "Chivo Mono"; font-size: 10px; letter-spacing: 1.5px; color: var(--lacre); font-weight: 600; text-transform: uppercase; }
 
+/* ---------- IVs ---------- */
 .ivs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
 .iv { border: 1.5px solid var(--tinta); border-radius: 8px; text-align: center; padding: 4px 0; background: var(--papel-alto); }
 .iv .n { font-family: "Chivo Mono"; font-weight: 600; font-size: 13px; }
@@ -166,6 +179,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .iv.max .n { color: var(--oro); }
 .iv .l { font-size: 9px; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: 0.5px; }
 
+/* ---------- Chat ---------- */
 .chat-caja { max-height: 230px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .burbuja { max-width: 82%; padding: 7px 11px; font-size: 13px; border: 1.5px solid var(--tinta); border-radius: 12px; background: var(--papel-alto); }
 .burbuja.mia { align-self: flex-end; background: var(--cielo); border-bottom-right-radius: 3px; }
@@ -179,10 +193,12 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .chat-input:focus, .buscador:focus { outline: 3px solid var(--verde); outline-offset: 1px; }
 .buscador { width: 100%; margin-bottom: 14px; }
 
+/* ---------- Comparativa del contrato ---------- */
 .contrato-grid { display: grid; grid-template-columns: 1fr 1fr; }
 .contrato-grid > div { padding: 12px 14px; }
 .contrato-grid > div:first-child { border-right: 2px dashed var(--tinta); }
 
+/* ---------- Barra de navegación ---------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;
   pointer-events: none; z-index: 10;
@@ -204,6 +220,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 }
 .tab.activa { background: var(--tinta); color: var(--papel-alto); }
 
+/* ---------- Detalles ---------- */
 .fila { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; }
 .enlace-volver { background: none; border: none; font: inherit; font-size: 13px; color: var(--tinta-suave); cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
 .estrellas { display: flex; justify-content: center; gap: 10px; font-size: 30px; }
@@ -217,6 +234,7 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
   * { transition: none !important; }
 }
 
+/* ---------- Formularios ---------- */
 .campo { display: block; margin-bottom: 12px; }
 .campo > span { display: block; font-family: "Chivo Mono"; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--tinta-suave); margin-bottom: 5px; }
 .campo input, .campo select, .campo textarea {
@@ -230,9 +248,11 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 12px; }
 .check input { width: 20px; height: 20px; accent-color: var(--verde); }
 
+/* ---------- Estado vacío ---------- */
 .vacio { text-align: center; padding: 36px 18px; border: 2px dashed var(--tinta-suave); border-radius: var(--radio); color: var(--tinta-suave); }
 .vacio .icono { font-size: 38px; margin-bottom: 8px; }
 
+/* ---------- Tabla admin ---------- */
 .tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .tabla th { text-align: left; font-family: "Chivo Mono"; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--tinta-suave); padding: 6px 6px; border-bottom: 2px solid var(--tinta); }
 .tabla td { padding: 8px 6px; border-bottom: 1px solid #d8ded9; vertical-align: top; }
@@ -241,3 +261,27 @@ button.ficha:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(
 .metrica .num { font-family: "Unbounded"; font-weight: 700; font-size: 22px; }
 .metrica .lab { font-family: "Chivo Mono"; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--tinta-suave); }
 .select-mini { font: inherit; font-size: 12px; padding: 4px 6px; border: 1.5px solid var(--tinta); border-radius: 8px; background: var(--papel-alto); }
+
+/* ===== Modo oscuro: mismas dos tintas, papel invertido ===== */
+body.oscuro {
+  --papel: #12160f;
+  --papel-alto: #1b2118;
+  --tinta: #e8f0e4;
+  --tinta-suave: #9aab96;
+  --verde: #4ec07f;
+  --lacre: #ff7a52;
+  --lacre-papel: #3a1c12;
+  --oro: #e0b93f;
+  --oro-papel: #33290d;
+  --cielo: #22301f;
+  --sombra: 4px 4px 0 #000;
+}
+body.oscuro { background-image: radial-gradient(rgba(232, 240, 228, 0.07) 1px, transparent 1px); }
+body.oscuro .sello { mix-blend-mode: normal; }
+body.oscuro .btn { color: #0d1a12; }
+body.oscuro .btn.secundario, body.oscuro .btn.peligro { color: var(--tinta); }
+body.oscuro .btn.peligro { color: var(--lacre); }
+body.oscuro .tabla td { border-bottom-color: #2d3a29; }
+body.oscuro .aviso.lacre { color: #ffc4ae; }
+body.oscuro .aviso.oro { color: #f2dd9a; }
+body.oscuro .aviso.verde { color: #b6ebcb; }

@@ -274,6 +274,7 @@ app.get("/api/state", authAny, async (req, res) => {
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
       (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
       (SELECT max(t.created_at) FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS last_trade,
+      u.showcase, u.bio,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
@@ -299,6 +300,15 @@ app.get("/api/state", authAny, async (req, res) => {
     : await q(`SELECT * FROM disputes WHERE reporter_id=$1 OR accused_id=$1 ORDER BY created_at DESC`, [me.id]);
 
   // Huella del estado para evitar reenviar lo mismo cada 8 segundos
+  const wishR = await q(`SELECT * FROM wishlist WHERE user_id=$1 ORDER BY id DESC`, [me.id]);
+  const matchesR = wishR.rowCount
+    ? await q(`SELECT DISTINCT ON (o.id) o.id, o.owner_id, o.data, o.created_at, w.species AS wish
+               FROM offers o JOIN wishlist w ON lower(o.data->>'species') = lower(w.species)
+               WHERE w.user_id=$1 AND o.status='active' AND o.owner_id <> $1
+                 AND (w.shiny_only = false OR (o.data->>'isShiny')::boolean = true)
+               ORDER BY o.id, o.created_at DESC LIMIT 30`, [me.id])
+    : { rows: [] };
+
   const sanctionsR = await q(`SELECT s.*, d.decided_by AS dispute_decided_by FROM sanctions s
     LEFT JOIN disputes d ON d.id = s.dispute_id
     WHERE s.expires IS NULL OR s.expires>now() ORDER BY s.created_at DESC LIMIT 200`);
@@ -316,7 +326,7 @@ app.get("/api/state", authAny, async (req, res) => {
       verified: u.verified, createdAt: u.created_at,
       trades: u.trades_done, rating: u.rating, sanctions: u.sanctions_n,
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
-      lastTrade: u.last_trade,
+      lastTrade: u.last_trade, showcase: u.showcase || [], bio: u.bio,
       rank: u.sanctions_n > 0 ? "marcado"
         : u.trades_done >= 100 ? "oro"
         : u.trades_done >= 25 ? "plata"
@@ -343,6 +353,11 @@ app.get("/api/state", authAny, async (req, res) => {
       ...(esStaff ? { disputeDecidedBy: s.dispute_decided_by } : {}),
     })),
     audit: auditR.rows.map((a) => ({ id: a.id, actorId: a.actor_id, action: a.action, target: a.target, reason: a.reason, at: a.created_at })),
+    wishlist: wishR.rows.map((w) => ({ id: w.id, species: w.species, shinyOnly: w.shiny_only, note: w.note, at: w.created_at })),
+    matches: matchesR.rows.map((m) => ({
+      offerId: m.id, ownerId: m.owner_id, species: m.data?.species, isShiny: !!m.data?.isShiny,
+      wants: m.data?.wants, wish: m.wish, at: m.created_at,
+    })),
     offerReports: reportsR.rows.map((r) => ({
       id: r.id, offerId: r.target, byId: r.actor_id, ownerId: r.owner_id,
       species: r.data?.species, reason: r.reason, at: r.created_at,
@@ -406,6 +421,54 @@ app.post("/api/offers/:id/remove", auth, staff, async (req, res) => {
   await q(`UPDATE offers SET status='removed' WHERE id=$1`, [req.params.id]);
   await audit(req.me.id, "offer.removed_by_staff", req.params.id, String(req.body?.reason || "").slice(0, 300));
   res.json({ ok: true });
+});
+
+/* ---------- Lista de deseos ---------- */
+const MAX_DESEOS = 30;
+app.post("/api/wishlist", auth, needsEmail, async (req, res) => {
+  const especie = String(req.body?.species || "").trim();
+  if (especie.length < 2) return err(res, "validation_error", 422, "Escribe la especie que buscas");
+  const n = await q(`SELECT count(*)::int AS n FROM wishlist WHERE user_id=$1`, [req.me.id]);
+  if (n.rows[0].n >= MAX_DESEOS) return err(res, "limit_reached", 429, `Máximo ${MAX_DESEOS} Pokémon en tu lista de deseos`);
+  const ya = await q(`SELECT 1 FROM wishlist WHERE user_id=$1 AND lower(species)=lower($2)`, [req.me.id, especie]);
+  if (ya.rowCount) return err(res, "conflict", 409, "Ya tienes esa especie en tu lista");
+  await q(`INSERT INTO wishlist (user_id, species, shiny_only, note) VALUES ($1,$2,$3,$4)`,
+    [req.me.id, especie, !!req.body?.shinyOnly, String(req.body?.note || "").slice(0, 200) || null]);
+  res.status(201).json({ ok: true });
+});
+
+app.delete("/api/wishlist/:id", auth, async (req, res) => {
+  await q(`DELETE FROM wishlist WHERE id=$1 AND user_id=$2`, [req.params.id, req.me.id]);
+  res.json({ ok: true });
+});
+
+/* ---------- Vitrina y biografía ---------- */
+app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
+  const lista = Array.isArray(req.body?.showcase) ? req.body.showcase.slice(0, 6) : [];
+  const limpia = lista.map((x) => ({
+    species: String(x?.species || "").trim().slice(0, 40),
+    isShiny: !!x?.isShiny,
+    note: String(x?.note || "").trim().slice(0, 80) || null,
+  })).filter((x) => x.species.length >= 2);
+  const bio = String(req.body?.bio ?? "").trim().slice(0, 300);
+  if (hasMoney(bio) || limpia.some((x) => hasMoney(x.species) || hasMoney(x.note || "")))
+    return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
+  await q(`UPDATE users SET showcase=$2, bio=$3 WHERE id=$1`, [req.me.id, JSON.stringify(limpia), bio || null]);
+  res.json({ ok: true });
+});
+
+/* ---------- Estadísticas públicas ---------- */
+app.get("/api/stats", async (_req, res) => {
+  const r = await q(`SELECT
+    (SELECT count(*)::int FROM users WHERE status <> 'deleted') AS usuarios,
+    (SELECT count(*)::int FROM users WHERE verified=true AND status='active') AS verificados,
+    (SELECT count(*)::int FROM offers WHERE status='active') AS ofertas,
+    (SELECT count(*)::int FROM trades WHERE state='closed') AS cerrados,
+    (SELECT count(*)::int FROM trades WHERE state NOT IN ('closed','cancelled')) AS activos,
+    (SELECT count(*)::int FROM disputes) AS disputas,
+    (SELECT count(*)::int FROM disputes WHERE status='open') AS abiertas,
+    (SELECT count(*)::int FROM sanctions WHERE expires IS NULL OR expires>now()) AS sanciones`);
+  res.json(r.rows[0]);
 });
 
 /* ---------- Intercambios ---------- */

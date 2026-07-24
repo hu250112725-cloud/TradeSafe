@@ -2,6 +2,7 @@ import { useState, useEffect, useReducer } from "react";
 import * as api from "./api.js";
 import { fecha, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
+import { SPECIES } from "./species.js";
 
 /* ================= Piezas de UI ================= */
 const Sello = ({ code, verde, grande }) => (
@@ -16,6 +17,31 @@ const Campo = ({ label, error, children }) => (
 );
 
 const RANGOS = { novato: "rankNovato", bronce: "rankBronce", plata: "rankPlata", oro: "rankOro", marcado: "rankMarcado" };
+
+function CampoEspecie({ label, value, onChange, placeholder }) {
+  const [foco, setFoco] = useState(false);
+  const v = String(value || "");
+  const sug = v.length >= 2
+    ? SPECIES.filter((e) => e.toLowerCase().startsWith(v.toLowerCase())).slice(0, 6)
+    : [];
+  const exacta = SPECIES.some((e) => e.toLowerCase() === v.toLowerCase());
+  return (
+    <div style={{ position: "relative" }}>
+      <Campo label={label}>
+        <input value={v} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+          onFocus={() => setFoco(true)} onBlur={() => setTimeout(() => setFoco(false), 150)} autoComplete="off" />
+      </Campo>
+      {foco && sug.length > 0 && !exacta && (
+        <div className="ficha" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: -6, padding: 6 }}>
+          {sug.map((e) => (
+            <button key={e} className="fila" style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", font: "inherit", padding: "7px 6px" }}
+              onMouseDown={() => onChange(e)}>{e}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Rep({ userId, onFicha }) {
   const u = userById(userId);
@@ -293,7 +319,7 @@ function Publicar({ refresh, done }) {
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().publicarOferta}</h1>
       <div className="ficha">
         <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().soloObligatorio}</p>
-        <Campo label={tx().lblEspecie}><input value={f.species || ""} onChange={set("species")} placeholder={tx().phEspecie} /></Campo>
+        <CampoEspecie label={tx().lblEspecie} value={f.species} onChange={(v) => setF({ ...f, species: v })} placeholder={tx().phEspecie} />
         <label className="check"><input type="checkbox" checked={!!f.shiny} onChange={set("shiny")} /> {tx().esShiny}</label>
         <Campo label={tx().lblBuscas}><textarea value={f.wants || ""} onChange={set("wants")} placeholder={tx().phBuscas} /></Campo>
         <div style={{ marginBottom: 12 }}>
@@ -329,8 +355,9 @@ function Publicar({ refresh, done }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   const [open, setOpen] = useState(null);
+  useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
   const [give, setGive] = useState("");
   const [busca, setBusca] = useState("");
   const [soloShiny, setSoloShiny] = useState(false);
@@ -446,6 +473,56 @@ function Mercado({ me, refresh, onOffenders, onFicha }) {
   );
 }
 
+/* ================= Lista de deseos ================= */
+function Deseos({ me, refresh, onAbrirOferta }) {
+  const [f, setF] = useState({});
+  const { run, busy, err } = useRun(refresh);
+  const lista = api.snap.wishlist || [];
+  const matches = api.snap.matches || [];
+  return (
+    <div>
+      <h1 className="h1" style={{ marginBottom: 14 }}>{tx().deseosTitulo}</h1>
+      <p className="txt-s suave" style={{ marginBottom: 14 }}>{tx().deseosIntro}</p>
+
+      {matches.length > 0 && (
+        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)", boxShadow: "4px 4px 0 var(--verde)" }}>
+          <div className="eyebrow" style={{ marginBottom: 8, color: "var(--verde)" }}>{tx().coincidencias(matches.length)}</div>
+          {matches.map((m) => (
+            <button key={m.offerId} className="fila" style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "9px 0" }}
+              onClick={() => onAbrirOferta(m.offerId)}>
+              <span className="txt-s"><b>{m.species}</b>{m.isShiny ? " ⭐" : ""} — {userById(m.ownerId)?.displayName ?? "—"}</span>
+              <span className="txt-xs suave">{fecha(m.at)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="ficha">
+        <CampoEspecie label={tx().lblDeseo} value={f.species} onChange={(v) => setF({ ...f, species: v })} placeholder={tx().phEspecie} />
+        <label className="check"><input type="checkbox" checked={!!f.shinyOnly} onChange={(e) => setF({ ...f, shinyOnly: e.target.checked })} /> {tx().soloShinyDeseo}</label>
+        <Campo label={tx().lblNotaDeseo}><input value={f.note || ""} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
+        {err && <Aviso tipo="lacre">{err}</Aviso>}
+        <button className="btn mt-10" disabled={busy || !f.species} onClick={() => run(async () => { await api.addWish(f); setF({}); })}>
+          {tx().btnAddDeseo}
+        </button>
+      </div>
+
+      {lista.length === 0 ? (
+        <div className="mt-14"><Vacio icono="✨">{tx().sinDeseos}</Vacio></div>
+      ) : (
+        <div className="ficha mt-14">
+          {lista.map((w) => (
+            <div key={w.id} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "9px 0" }}>
+              <span className="txt-s"><b>{w.species}</b>{w.shinyOnly ? " ⭐" : ""}{w.note ? <span className="suave"> — {w.note}</span> : null}</span>
+              <button className="enlace-volver" disabled={busy} onClick={() => run(() => api.delWish(w.id))}>{tx().quitar}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ================= Ficha pública del entrenador ================= */
 function FichaUsuario({ userId, onBack }) {
   const u = userById(userId);
@@ -469,8 +546,20 @@ function FichaUsuario({ userId, onBack }) {
           </div>
           <div className="txt-xs suave mt-10">{tx().miembroDesde} {fecha(u.createdAt)}</div>
           <div className="txt-xs suave">{u.lastTrade ? `${tx().ultimoTrade} ${fecha(u.lastTrade)}` : tx().sinTradesAun}</div>
+          {u.bio && <p className="txt-s mt-10">{u.bio}</p>}
         </div>
       </div>
+      {u.showcase?.length > 0 && (
+        <div className="ficha mt-14">
+          <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().vitrina}</div>
+          {u.showcase.map((v, i) => (
+            <div key={i} className="fila" style={{ padding: "5px 0" }}>
+              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
+              {v.note && <span className="txt-xs suave">{v.note}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {sanc.map((s) => (
         <div className="mt-14" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
       ))}
@@ -811,6 +900,10 @@ function Perfil({ me, refresh }) {
   const misSanciones = api.snap.sanctions.filter((s) => s.userId === me.id);
   const [apelaId, setApelaId] = useState(null);
   const [apelaTxt, setApelaTxt] = useState("");
+  const [bio, setBio] = useState(u?.bio || "");
+  const [vitrina, setVitrina] = useState(u?.showcase || []);
+  const [nuevo, setNuevo] = useState({});
+  const [guardado, setGuardado] = useState(false);
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().miPerfil}</h1>
@@ -882,6 +975,30 @@ function Perfil({ me, refresh }) {
           ))}
         </div>
       )}
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().vitrina}</div>
+        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().vitrinaIntro}</p>
+        <Campo label={tx().lblBio}><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} /></Campo>
+        {vitrina.map((v, i) => (
+          <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "8px 0" }}>
+            <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}{v.note ? <span className="suave"> — {v.note}</span> : null}</span>
+            <button className="enlace-volver" onClick={() => setVitrina(vitrina.filter((_, j) => j !== i))}>{tx().quitar}</button>
+          </div>
+        ))}
+        {vitrina.length < 6 && (
+          <div className="mt-10">
+            <CampoEspecie label={tx().lblEspecie} value={nuevo.species} onChange={(v) => setNuevo({ ...nuevo, species: v })} placeholder={tx().phEspecie} />
+            <label className="check"><input type="checkbox" checked={!!nuevo.isShiny} onChange={(e) => setNuevo({ ...nuevo, isShiny: e.target.checked })} /> {tx().esShiny}</label>
+            <button className="btn mini secundario" disabled={!nuevo.species}
+              onClick={() => { setVitrina([...vitrina, nuevo]); setNuevo({}); }}>{tx().addVitrina}</button>
+          </div>
+        )}
+        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina }); setGuardado(true); setTimeout(() => setGuardado(false), 3000); })}>
+          {tx().btnGuardarPerfil}
+        </button>
+        {guardado && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
+      </div>
+
       <div className="ficha mt-14">
         <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().privacidadCuenta}</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1087,6 +1204,19 @@ export default function App() {
   const [verNotis, setVerNotis] = useState(false);
   const [abrirTrade, setAbrirTrade] = useState(null);
   const [verFicha, setVerFicha] = useState(null);
+  const [abrirOferta, setAbrirOferta] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [oscuro, setOscuro] = useState(() => {
+    try {
+      const g = localStorage.getItem("ts_tema");
+      if (g) return g === "oscuro";
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch { return false; }
+  });
+  useEffect(() => {
+    document.body.classList.toggle("oscuro", oscuro);
+    try { localStorage.setItem("ts_tema", oscuro ? "oscuro" : "claro"); } catch { /* nada */ }
+  }, [oscuro]);
   const [vistas, setVistas] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ts_notis_vistas") || "[]")); } catch { return new Set(); }
   });
@@ -1096,6 +1226,10 @@ export default function App() {
   };
   const [phase, setPhase] = useState("cargando"); // cargando | sin-conexion | listo
   const [hasUsers, setHasUsers] = useState(true);
+
+  useEffect(() => {
+    api.getStats().then(setStats).catch(() => { /* opcional */ });
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -1145,7 +1279,11 @@ export default function App() {
     const set = new Set(vistas); nuevos.forEach((a) => set.add(a.key)); guardarVistas(set);
   }, [avisos.map((a) => a.key).join("|")]);
 
-  const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar], ["trades", pendientes > 0 ? tx().tabTrades + " ●" : tx().tabTrades], ["perfil", tx().tabPerfil], ...(esStaff ? [["staff", tx().tabStaff]] : [])];
+  const nMatches = api.snap?.matches?.length || 0;
+  const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar],
+    ["deseos", nMatches > 0 ? `${tx().tabDeseos} ●` : tx().tabDeseos],
+    ["trades", pendientes > 0 ? tx().tabTrades + " ●" : tx().tabTrades],
+    ["perfil", tx().tabPerfil], ...(esStaff ? [["staff", tx().tabStaff]] : [])];
 
   return (
     <div className="frame">
@@ -1170,10 +1308,16 @@ export default function App() {
             )}
             <Sello code="BETA" verde />
           </div>
-          <button className="enlace-volver mono" style={{ fontSize: 11 }}
-            onClick={() => { setLang(getLang() === "es" ? "en" : "es"); refresh(); }}>
-            {getLang() === "es" ? "ES → EN" : "EN → ES"}
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button className="enlace-volver" style={{ fontSize: 15, textDecoration: "none" }}
+              onClick={() => setOscuro(!oscuro)} aria-label={oscuro ? tx().modoClaro : tx().modoOscuro}>
+              {oscuro ? "☀️" : "🌙"}
+            </button>
+            <button className="enlace-volver mono" style={{ fontSize: 11 }}
+              onClick={() => { setLang(getLang() === "es" ? "en" : "es"); refresh(); }}>
+              {getLang() === "es" ? "ES → EN" : "EN → ES"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1197,7 +1341,20 @@ export default function App() {
         ) : phase === "sin-conexion" ? (
           <Vacio icono="📡">{tx().sinConexion1}<br />{tx().sinConexion2} <b className="mono">DATABASE_URL</b> · <b className="mono">JWT_SECRET</b> {tx().enVercel}</Vacio>
         ) : !me ? (
-          <AuthScreen refresh={refresh} hasUsers={hasUsers} />
+          <>
+            <AuthScreen refresh={refresh} hasUsers={hasUsers} />
+            {stats && stats.usuarios > 0 && (
+              <div className="ficha mt-14">
+                <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().statsTitulo}</div>
+                <div className="metricas">
+                  <div className="metrica"><div className="num">{stats.usuarios}</div><div className="lab">{tx().statUsuarios}</div></div>
+                  <div className="metrica"><div className="num">{stats.cerrados}</div><div className="lab">{tx().statCerrados}</div></div>
+                  <div className="metrica"><div className="num">{stats.ofertas}</div><div className="lab">{tx().statOfertas}</div></div>
+                  <div className="metrica"><div className="num">{stats.resueltas}</div><div className="lab">{tx().statResueltas}</div></div>
+                </div>
+              </div>
+            )}
+          </>
         ) : me.status === "suspended" ? (
           <Perfil me={me} refresh={refresh} />
         ) : verFicha ? (
@@ -1205,7 +1362,10 @@ export default function App() {
         ) : verInfractores ? (
           <Infractores onBack={() => setVerInfractores(false)} />
         ) : tab === "mercado" ? (
-          <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha} />
+          <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
+            abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
+        ) : tab === "deseos" ? (
+          <Deseos me={me} refresh={refresh} onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }} />
         ) : tab === "publicar" ? (
           <Publicar refresh={refresh} done={() => setTab("mercado")} />
         ) : tab === "trades" ? (
