@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { q } from "../lib/db.js";
 import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
 import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
+import { certHtml } from "../lib/cert.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -924,13 +925,22 @@ app.get("/api/cert/:id", async (req, res) => {
      FROM trades WHERE state='closed' AND (a_id=$1 OR b_id=$1)`, [usr.id]);
   const s = await q(`SELECT count(*)::int AS n FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [usr.id]);
   const cerrados = t.rows[0].cerrados;
-  res.json({
+  const cert = {
     trainer: usr.display_name, homeName: usr.trainer_name, verified: usr.verified,
     memberSince: usr.created_at, closedTrades: cerrados, rating: t.rows[0].rating,
     lastTrade: t.rows[0].ultimo, activeSanctions: s.rows[0].n,
     rank: s.rows[0].n > 0 ? "marcado" : cerrados >= 100 ? "oro" : cerrados >= 25 ? "plata" : cerrados >= 5 ? "bronce" : "novato",
     issuedAt: new Date().toISOString(),
-  });
+  };
+  // ?format=json para integraciones; por defecto, página imprimible
+  const quiereJson = req.query.format === "json"
+    || (!String(req.headers.accept || "").includes("text/html") && req.query.format !== "html");
+  if (quiereJson) return res.json(cert);
+  const idioma = String(req.query.lang || "").toLowerCase() === "en" ? "en"
+    : String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "es";
+  const url = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}/api/cert/${usr.id}`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(certHtml(cert, url, idioma));
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));

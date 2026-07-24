@@ -1209,10 +1209,14 @@ function Perfil({ me, refresh }) {
         <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().certificado}</div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().certIntro}</p>
         <p className="txt-xs mono suave" style={{ wordBreak: "break-all", marginBottom: 10 }}>{certUrl}</p>
-        <button className="btn mini secundario" onClick={async () => {
-          try { await navigator.clipboard.writeText(certUrl); } catch { /* sin permiso */ }
-          setCopiado(true); setTimeout(() => setCopiado(false), 3000);
-        }}>{tx().btnCopiarCert}</button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a className="btn mini" style={{ textDecoration: "none", textAlign: "center" }}
+            href={certUrl + "?lang=" + getLang()} target="_blank" rel="noreferrer">{tx().btnVerCert}</a>
+          <button className="btn mini secundario" onClick={async () => {
+            try { await navigator.clipboard.writeText(certUrl); } catch { /* sin permiso */ }
+            setCopiado(true); setTimeout(() => setCopiado(false), 3000);
+          }}>{tx().btnCopiarCert}</button>
+        </div>
         {copiado && <div className="mt-10"><Aviso tipo="verde">{tx().certCopiado}</Aviso></div>}
       </div>
 
