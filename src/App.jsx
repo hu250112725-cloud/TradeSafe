@@ -2,7 +2,7 @@ import { useState, useEffect, useReducer, useRef } from "react";
 import * as api from "./api.js";
 import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
-import { SPECIES, spriteShiny } from "./species.js";
+import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
 
 /* ================= Piezas de UI ================= */
@@ -48,13 +48,31 @@ function Presencia({ lastSeen }) {
 }
 
 // Sprite shiny del Pokémon (se oculta solo si no carga)
-function Sprite({ nombre, tam = 44 }) {
-  const [falla, setFalla] = useState(false);
-  const url = nombre ? spriteShiny(nombre) : null;
-  if (!url || falla) return null;
-  return <img src={url} alt="" width={tam} height={tam} loading="lazy"
-    onError={() => setFalla(true)}
-    style={{ width: tam, height: tam, objectFit: "contain", flexShrink: 0 }} />;
+function Sprite({ nombre, tam = 44, shiny = true, halo = false }) {
+  const [paso, setPaso] = useState(0);   // 0 = principal · 1 = alternativo · 2 = sin sprite
+  const url = !nombre ? null : paso === 0 ? spriteDe(nombre, shiny) : paso === 1 ? spriteAlt(nombre, shiny) : null;
+  // Si no hay conexión al CDN o la especie no existe, se deja un hueco del mismo
+  // tamaño para que la interfaz no dé saltos.
+  if (!url) return (
+    <span aria-hidden="true" style={{ width: tam, height: tam, flexShrink: 0, opacity: .3,
+      display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: tam * 0.6 }}>◈</span>
+  );
+  const img = (
+    <img src={url} alt="" width={tam} height={tam} loading="lazy"
+      onError={() => setPaso(paso + 1)}
+      style={{ width: tam, height: tam, objectFit: "contain", flexShrink: 0,
+        filter: shiny ? "drop-shadow(0 2px 4px rgba(224,185,63,.45))" : "none" }} />
+  );
+  if (!halo) return img;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: tam + 12, height: tam + 12, borderRadius: "50%", flexShrink: 0,
+      background: shiny
+        ? "radial-gradient(circle, rgba(224,185,63,.28), rgba(224,185,63,0) 70%)"
+        : "radial-gradient(circle, rgba(10,107,60,.14), rgba(10,107,60,0) 70%)" }}>
+      {img}
+    </span>
+  );
 }
 
 function CampoEspecie({ label, value, onChange, placeholder }) {
@@ -427,6 +445,9 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
         <button className="enlace-volver" onClick={() => setOpen(null)}>{tx().volverMercado}</button>
         <div className="ticket mt-14">
           <div className="ticket-cuerpo">
+            <div className="centrado" style={{ marginBottom: 6 }}>
+              <Sprite nombre={o.species} tam={132} shiny={o.isShiny} halo />
+            </div>
             <div className="tags">
               <span className="h1">{o.species}</span>
               {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
@@ -528,16 +549,23 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
       {offers.length === 0 ? (
         <Vacio icono="📦">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
       ) : offers.map((o) => (
-        <button key={o.id} className="ficha" style={{ marginBottom: 14 }} onClick={() => setOpen(o.id)}>
-          <div className="tags">
-            <span className="h2">{o.species}</span>
-            {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
-            {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
-            {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
+        <button key={o.id} className="ficha carta-oferta" style={{ marginBottom: 14 }} onClick={() => setOpen(o.id)}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <Sprite nombre={o.species} tam={74} shiny={o.isShiny} halo />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="tags">
+                <span className="h2">{o.species}</span>
+                {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
+                {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
+                {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
+              </div>
+              <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {tx().busca} {o.wants}
+              </p>
+              {o.originImage && <span className="tag verde mt-6" style={{ display: "inline-block" }}>{tx().conPrueba}</span>}
+            </div>
           </div>
-          <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx().busca} {o.wants}</p>
-          {o.originImage && <span className="tag verde mt-6" style={{ display: "inline-block" }}>{tx().conPrueba}</span>}
-          <div className="mt-10"><Rep userId={o.ownerId} /></div>
+          <div className="mt-10" style={{ borderTop: "1px solid #d8ded9", paddingTop: 9 }}><Rep userId={o.ownerId} /></div>
         </button>
       ))}
       </>)}
@@ -698,7 +726,10 @@ function Deseos({ me, refresh, onAbrirOferta }) {
           {matches.map((m) => (
             <button key={m.offerId} className="fila" style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "9px 0" }}
               onClick={() => onAbrirOferta(m.offerId)}>
-              <span className="txt-s"><b>{m.species}</b>{m.isShiny ? " ⭐" : ""} — {userById(m.ownerId)?.displayName ?? "—"}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Sprite nombre={m.species} tam={32} shiny={m.isShiny} />
+                <span className="txt-s"><b>{m.species}</b>{m.isShiny ? " ⭐" : ""} — {userById(m.ownerId)?.displayName ?? "—"}</span>
+              </span>
               <span className="txt-xs suave">{fecha(m.at)}</span>
             </button>
           ))}
@@ -721,7 +752,10 @@ function Deseos({ me, refresh, onAbrirOferta }) {
         <div className="ficha mt-14">
           {lista.map((w) => (
             <div key={w.id} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "9px 0" }}>
-              <span className="txt-s"><b>{w.species}</b>{w.shinyOnly ? " ⭐" : ""}{w.note ? <span className="suave"> — {w.note}</span> : null}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <Sprite nombre={w.species} tam={34} shiny={w.shinyOnly} />
+                <span className="txt-s"><b>{w.species}</b>{w.shinyOnly ? " ⭐" : ""}{w.note ? <span className="suave"> — {w.note}</span> : null}</span>
+              </span>
               <button className="enlace-volver" disabled={busy} onClick={() => run(() => api.delWish(w.id))}>{tx().quitar}</button>
             </div>
           ))}
@@ -901,7 +935,8 @@ function TradeView({ trade: id, me, refresh, onBack }) {
           </div>
           <div>
             <div className="eyebrow">{soyA ? tx().recibes : tx().tuEntregas}</div>
-            <div className="h2 mt-6">{offer ? `${offer.species}${offer.isShiny ? " ⭐" : ""}` : "—"}</div>
+            {offer && <div style={{ margin: "4px 0 2px" }}><Sprite nombre={offer.species} tam={56} shiny={offer.isShiny} halo /></div>}
+            <div className="h2">{offer ? `${offer.species}${offer.isShiny ? " ⭐" : ""}` : "—"}</div>
             <div className="txt-xs suave">{offer ? [offer.level && `${tx().nv} ${offer.level}`, offer.nature].filter(Boolean).join(" · ") : ""}</div>
             {t.bItems?.map((it, i) => <p key={i} className="txt-s mt-6">• {it}</p>)}
           </div>
@@ -1259,7 +1294,10 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
               {pend && <span className="tag lacre">{tx().teToca}</span>}
               {sinLeer(t, me.id) > 0 && <span className="tag lacre">💬 {tx().nuevosMensajes(sinLeer(t, me.id))}</span>}
             </div>
-            <p className="txt-s mt-10">{offer?.species ?? "—"} ⇄ {tx().con} <b>{otro?.displayName ?? "—"}</b></p>
+            <div className="mt-10" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {offer && <Sprite nombre={offer.species} tam={38} shiny={offer.isShiny} />}
+              <p className="txt-s">{offer?.species ?? "—"} ⇄ {tx().con} <b>{otro?.displayName ?? "—"}</b></p>
+            </div>
           </button>
         );
       })}

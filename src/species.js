@@ -21,3 +21,16 @@ export function spriteShinyAlt(nombre) {
   const id = dexId(nombre);
   return id ? `${CDN}/shiny/${id}.png` : null;
 }
+
+// Render normal de Pokémon HOME
+export function spriteNormal(nombre) {
+  const id = dexId(nombre);
+  return id ? `${CDN}/other/home/${id}.png` : null;
+}
+export function spriteNormalAlt(nombre) {
+  const id = dexId(nombre);
+  return id ? `${CDN}/${id}.png` : null;
+}
+// El que corresponda según sea shiny o no
+export const sprite = (nombre, esShiny) => (esShiny ? spriteShiny(nombre) : spriteNormal(nombre));
+export const spriteAlt = (nombre, esShiny) => (esShiny ? spriteShinyAlt(nombre) : spriteNormalAlt(nombre));
