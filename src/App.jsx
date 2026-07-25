@@ -405,6 +405,7 @@ function Publicar({ refresh, done }) {
 
 /* ================= Mercado ================= */
 function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
+  const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
   const [give, setGive] = useState("");
@@ -501,10 +502,27 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <h1 className="h1">{tx().mercado}</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h1 className="h1">{vista === "publicar" ? tx().publicarOferta : vista === "deseos" ? tx().deseosTitulo : tx().mercado}</h1>
+        <button className={`btn mini ${vista === "publicar" ? "secundario" : ""}`}
+          onClick={() => setVista(vista === "publicar" ? "ofertas" : "publicar")}>
+          {vista === "publicar" ? tx().btnCancelar : tx().nuevaOferta}
+        </button>
+      </div>
+      <div className="tags" style={{ marginBottom: 14 }}>
+        <button className={`btn mini ${vista === "ofertas" ? "" : "secundario"}`} onClick={() => setVista("ofertas")}>{tx().verOfertas}</button>
+        <button className={`btn mini ${vista === "deseos" ? "" : "secundario"}`} onClick={() => setVista("deseos")}>
+          {tx().tabDeseos}{(api.snap.matches?.length || 0) > 0 ? " ●" : ""}
+        </button>
         <button className="btn mini secundario" onClick={onOffenders}>{tx().infractoresBtn}</button>
       </div>
+
+      {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} />}
+      {vista === "deseos" && (
+        <Deseos me={me} refresh={refresh}
+          onAbrirOferta={(id) => { setVista("ofertas"); setOpen(id); }} />
+      )}
+      {vista === "ofertas" && (<>
       <input className="buscador" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={tx().phBuscar} />
       <label className="check"><input type="checkbox" checked={soloShiny} onChange={(e) => setSoloShiny(e.target.checked)} /> {tx().soloShinys}</label>
       {offers.length === 0 ? (
@@ -522,6 +540,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           <div className="mt-10"><Rep userId={o.ownerId} /></div>
         </button>
       ))}
+      </>)}
     </div>
   );
 }
@@ -827,6 +846,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const [claim, setClaim] = useState("");
   const [showDispute, setShowDispute] = useState(false);
   const [offsitePend, setOffsitePend] = useState(null);
+  const [problemas, setProblemas] = useState(false);
   const [editandoItems, setEditandoItems] = useState(false);
   const [itemsTxt, setItemsTxt] = useState("");
   const [notaMed, setNotaMed] = useState("");
@@ -1059,37 +1079,6 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         </div>
       )}
 
-      {["contract", "pre_proof", "in_progress", "post_proof"].includes(t.state) && (
-        <div className="ficha mt-14">
-          <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().mediacion}</div>
-          {t.mediatorId ? (
-            <>
-              <p className="txt-s">{tx().mediadorActual(userById(t.mediatorId)?.displayName ?? "—")}</p>
-              {t.mediatorId === me.id && (
-                <div className="mt-10">
-                  <Campo label={tx().lblNotaMediacion}><input value={notaMed} onChange={(e) => setNotaMed(e.target.value)} /></Campo>
-                  <button className="btn mini" disabled={busy} onClick={() => run(async () => { await api.closeMediation(t.id, notaMed); setNotaMed(""); })}>
-                    {tx().btnCerrarMediacion}
-                  </button>
-                </div>
-              )}
-            </>
-          ) : t.mediationRequested ? (
-            <>
-              <Aviso tipo="oro">{tx().mediacionPedida}</Aviso>
-              {puedeMediar && t.aId !== me.id && t.bId !== me.id && (
-                <button className="btn mini mt-10" disabled={busy} onClick={() => run(() => api.takeMediation(t.id))}>{tx().btnTomarCaso}</button>
-              )}
-            </>
-          ) : (t.aId === me.id || t.bId === me.id) ? (
-            <>
-              <p className="txt-xs suave">{tx().mediacionAyuda}</p>
-              <button className="btn mini secundario mt-10" disabled={busy} onClick={() => run(() => api.askMediation(t.id))}>{tx().pedirMediacion}</button>
-            </>
-          ) : null}
-        </div>
-      )}
-
       {(["in_progress", "post_proof"].includes(t.state) || t.mediationRequested || t.mediatorId) && (
         <>
           <div className="ticket mt-14">
@@ -1150,21 +1139,62 @@ function TradeView({ trade: id, me, refresh, onBack }) {
               </div>
             </div>
           )}
-          {!showDispute ? (
-            <button className="btn peligro mt-14" onClick={() => setShowDispute(true)}>{tx().btnAbrirDisputa}</button>
-          ) : (
-            <div className="ficha mt-14">
-              <Campo label={tx().lblQueOcurrio}>
-                <textarea value={claim} onChange={(e) => setClaim(e.target.value)} />
-              </Campo>
-              <Aviso tipo="oro">{tx().avisoReportesFalsos}</Aviso>
-              <button className="btn peligro mt-14" disabled={busy}
-                onClick={() => run(async () => { await api.openDispute(t.id, claim); setShowDispute(false); setClaim(""); })}>
-                {tx().btnEnviarReporte}
-              </button>
-            </div>
-          )}
         </>
+      )}
+
+      {["contract", "pre_proof", "in_progress", "post_proof"].includes(t.state) && (
+        problemas || t.mediationRequested || t.mediatorId ? (
+          <div className="mt-14">
+            <div className="ficha">
+          <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().mediacion}</div>
+          {t.mediatorId ? (
+            <>
+              <p className="txt-s">{tx().mediadorActual(userById(t.mediatorId)?.displayName ?? "—")}</p>
+              {t.mediatorId === me.id && (
+                <div className="mt-10">
+                  <Campo label={tx().lblNotaMediacion}><input value={notaMed} onChange={(e) => setNotaMed(e.target.value)} /></Campo>
+                  <button className="btn mini" disabled={busy} onClick={() => run(async () => { await api.closeMediation(t.id, notaMed); setNotaMed(""); })}>
+                    {tx().btnCerrarMediacion}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : t.mediationRequested ? (
+            <>
+              <Aviso tipo="oro">{tx().mediacionPedida}</Aviso>
+              {puedeMediar && t.aId !== me.id && t.bId !== me.id && (
+                <button className="btn mini mt-10" disabled={busy} onClick={() => run(() => api.takeMediation(t.id))}>{tx().btnTomarCaso}</button>
+              )}
+            </>
+          ) : (t.aId === me.id || t.bId === me.id) ? (
+            <>
+              <p className="txt-xs suave">{tx().mediacionAyuda}</p>
+              <button className="btn mini secundario mt-10" disabled={busy} onClick={() => run(() => api.askMediation(t.id))}>{tx().pedirMediacion}</button>
+            </>
+          ) : null}
+            </div>
+            {["in_progress", "post_proof"].includes(t.state) && (
+              showDispute ? (
+                <div className="ficha mt-14">
+                  <Campo label={tx().lblQueOcurrio}>
+                    <textarea value={claim} onChange={(e) => setClaim(e.target.value)} />
+                  </Campo>
+                  <Aviso tipo="oro">{tx().avisoReportesFalsos}</Aviso>
+                  <button className="btn peligro mt-14" disabled={busy}
+                    onClick={() => run(async () => { await api.openDispute(t.id, claim); setShowDispute(false); setClaim(""); })}>
+                    {tx().btnEnviarReporte}
+                  </button>
+                  <button className="btn secundario" onClick={() => setShowDispute(false)}>{tx().btnCancelar}</button>
+                </div>
+              ) : (
+                <button className="btn peligro mt-14" onClick={() => setShowDispute(true)}>{tx().btnAbrirDisputa}</button>
+              )
+            )}
+          </div>
+        ) : (
+          <button className="enlace-volver mt-14" style={{ display: "block", margin: "14px auto 0" }}
+            onClick={() => setProblemas(true)}>{tx().algoVaMal}</button>
+        )
       )}
     </div>
   );
@@ -1756,11 +1786,12 @@ export default function App() {
   }, [me, phase]);
 
   const nMatches = api.snap?.matches?.length || 0;
-  const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar],
-    ["deseos", nMatches > 0 ? `${tx().tabDeseos} ●` : tx().tabDeseos],
+  const tabs = [
+    ["mercado", nMatches > 0 ? `${tx().tabMercado} ●` : tx().tabMercado],
+    ["trades", pendientes > 0 ? `${tx().tabTrades} ●` : tx().tabTrades],
     ["comunidad", tx().tabComunidad],
-    ["trades", pendientes > 0 ? tx().tabTrades + " ●" : tx().tabTrades],
-    ["perfil", tx().tabPerfil], ...(esStaff ? [["staff", tx().tabStaff]] : [])];
+    ["perfil", tx().tabPerfil],
+    ...(esStaff ? [["staff", tx().tabStaff]] : [])];
 
   return (
     <div className="frame">
@@ -1847,10 +1878,6 @@ export default function App() {
             abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
         ) : tab === "comunidad" ? (
           <Comunidad me={me} refresh={refresh} esStaff={esStaff} onFicha={setVerFicha} />
-        ) : tab === "deseos" ? (
-          <Deseos me={me} refresh={refresh} onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }} />
-        ) : tab === "publicar" ? (
-          <Publicar refresh={refresh} done={() => setTab("mercado")} />
         ) : tab === "trades" ? (
           <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)} />
         ) : tab === "perfil" ? (
