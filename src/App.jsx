@@ -19,6 +19,34 @@ const Campo = ({ label, error, children }) => (
 
 const RANGOS = { novato: "rankNovato", bronce: "rankBronce", plata: "rankPlata", oro: "rankOro", marcado: "rankMarcado" };
 
+/* Marca de tiempo de la última lectura de cada chat (por dispositivo) */
+const LEIDOS = "ts_chat_leido";
+function leidos() {
+  try { return JSON.parse(localStorage.getItem(LEIDOS) || "{}"); } catch { return {}; }
+}
+function marcarLeido(tradeId) {
+  try {
+    const m = leidos(); m[tradeId] = Date.now();
+    localStorage.setItem(LEIDOS, JSON.stringify(m));
+  } catch { /* sin almacenamiento */ }
+}
+/* Mensajes de la otra parte que aún no he visto */
+function sinLeer(t, miId) {
+  const desde = leidos()[t.id] || 0;
+  return (t.messages || []).filter((m) => !m.system && m.by !== miId && new Date(m.at).getTime() > desde).length;
+}
+
+/* "En línea" o "Visto hace X" */
+function Presencia({ lastSeen }) {
+  if (!lastSeen) return null;
+  const min = Math.floor((Date.now() - new Date(lastSeen)) / 60000);
+  if (min < 3) return <span className="tag verde">{tx().enLinea}</span>;
+  const t = min < 60 ? tx().haceMin(min)
+    : min < 1440 ? tx().haceHoras(Math.floor(min / 60))
+    : tx().haceDias(Math.floor(min / 1440));
+  return <span className="tag tenue">{tx().visto(t)}</span>;
+}
+
 // Sprite shiny del Pokémon (se oculta solo si no carga)
 function Sprite({ nombre, tam = 44 }) {
   const [falla, setFalla] = useState(false);
@@ -148,6 +176,8 @@ function calcularAvisos(me, esStaff) {
     const otro = nombre(soyA ? t.bId : t.aId);
     const base = { tradeId: t.id, code: t.code, at: t.events?.at(-1)?.at || t.createdAt };
     const push = (tipo, texto) => out.push({ ...base, key: `${t.id}:${tipo}:${t.state}`, texto });
+    const nuevos = sinLeer(t, me.id);
+    if (nuevos > 0) out.push({ ...base, key: `${t.id}:msg:${t.messages.at(-1)?.at}`, texto: t9.n_mensaje(otro) });
     if (t.state === "proposal" && soyB) push("proposal", t9.n_proposal(otro));
     else if (t.state === "contract") {
       const yoFirme = soyA ? t.signedA : t.signedB;
@@ -422,6 +452,10 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
         <div className="ficha mt-14">
           <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().ofrecidoPor}</div>
           <Rep userId={o.ownerId} onFicha={onFicha} />
+          <div className="tags mt-6"><Presencia lastSeen={userById(o.ownerId)?.lastSeen} /></div>
+          {userById(o.ownerId)?.availability && (
+            <p className="txt-xs suave mt-6">🕒 {userById(o.ownerId).availability}</p>
+          )}
           {sanctionsOf(o.ownerId).map((s) => (
             <div className="mt-10" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
           ))}
@@ -713,6 +747,8 @@ function FichaUsuario({ userId, onBack }) {
             {u.rating && <span className="tag oro">★ {u.rating}</span>}
             {u.newAccount && <span className="tag lacre">{tx().cuentaNueva}</span>}
           </div>
+          <div className="tags mt-10"><Presencia lastSeen={u.lastSeen} /></div>
+          {u.availability && <p className="txt-xs suave mt-6">🕒 {u.availability}</p>}
           <div className="txt-xs suave mt-10">{tx().miembroDesde} {fecha(u.createdAt)}</div>
           <div className="txt-xs suave">{u.lastTrade ? `${tx().ultimoTrade} ${fecha(u.lastTrade)}` : tx().sinTradesAun}</div>
           {u.bio && <p className="txt-s mt-10">{u.bio}</p>}
@@ -807,6 +843,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const yoConfirme = soyA ? t.confirmedA : t.confirmedB;
   const miDisputa = api.snap.disputes.find((d) => d.tradeId === t.id);
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
+  useEffect(() => { marcarLeido(t.id); }, [t.id, t.messages?.length]);
   const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
   const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
   const enviar = async () => {
@@ -1140,6 +1177,7 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
               <Sello code={t.code} />
               <span className={`tag ${t.state === "closed" ? "verde" : ["disputed", "cancelled"].includes(t.state) ? "lacre" : "tenue"}`}>{stateLabel(t.state)}</span>
               {pend && <span className="tag lacre">{tx().teToca}</span>}
+              {sinLeer(t, me.id) > 0 && <span className="tag lacre">💬 {tx().nuevosMensajes(sinLeer(t, me.id))}</span>}
             </div>
             <p className="txt-s mt-10">{offer?.species ?? "—"} ⇄ {tx().con} <b>{otro?.displayName ?? "—"}</b></p>
           </button>
@@ -1171,6 +1209,7 @@ function Perfil({ me, refresh }) {
   const [nuevo, setNuevo] = useState({});
   const [guardado, setGuardado] = useState(false);
   const [fav, setFav] = useState(me.favorite || "");
+  const [disp, setDisp] = useState(me.availability || "");
   const [avatarPrev, setAvatarPrev] = useState(null);
   const [avatarNuevo, setAvatarNuevo] = useState(null);
   const [copiado, setCopiado] = useState(false);
@@ -1299,6 +1338,9 @@ function Perfil({ me, refresh }) {
         <div className="eyebrow" style={{ margin: "16px 0 8px" }}>{tx().vitrina}</div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().vitrinaIntro}</p>
         <Campo label={tx().lblBio}><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} /></Campo>
+        <Campo label={tx().lblDisponibilidad}>
+          <input value={disp} onChange={(e) => setDisp(e.target.value)} placeholder={tx().phDisponibilidad} maxLength={120} />
+        </Campo>
         {vitrina.map((v, i) => (
           <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "8px 0" }}>
             <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}{v.note ? <span className="suave"> — {v.note}</span> : null}</span>
@@ -1313,7 +1355,7 @@ function Perfil({ me, refresh }) {
               onClick={() => { setVitrina([...vitrina, nuevo]); setNuevo({}); }}>{tx().addVitrina}</button>
           </div>
         )}
-        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina, favorite: fav, avatar: avatarNuevo });
+        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina, favorite: fav, availability: disp, avatar: avatarNuevo });
           setAvatarNuevo(null); setGuardado(true); setTimeout(() => setGuardado(false), 3000); })}>
           {tx().btnGuardarPerfil}
         </button>

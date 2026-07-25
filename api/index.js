@@ -255,6 +255,9 @@ async function expireStale() {
 /* ---------- Estado (una sola llamada trae todo lo visible) ---------- */
 let ultimaLimpieza = 0;
 app.get("/api/state", authAny, async (req, res) => {
+  // Presencia: se actualiza como mucho una vez por minuto para no castigar la base
+  if (!req.me.last_seen || Date.now() - new Date(req.me.last_seen) > 60000)
+    q(`UPDATE users SET last_seen=now() WHERE id=$1`, [req.me.id]).catch(() => {});
   await expireStale();
   // Limpieza de imágenes como mucho una vez por hora por instancia
   if (Date.now() - ultimaLimpieza > 3600000) {
@@ -275,7 +278,7 @@ app.get("/api/state", authAny, async (req, res) => {
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
       (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
       (SELECT max(t.created_at) FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS last_trade,
-      u.showcase, u.bio, u.avatar_id, u.favorite,
+      u.showcase, u.bio, u.avatar_id, u.favorite, u.last_seen, u.availability,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
@@ -345,7 +348,7 @@ app.get("/api/state", authAny, async (req, res) => {
 
   const cuerpo = {
     me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code, emailVerified: me.email_verified !== false,
-      avatarId: me.avatar_id, favorite: me.favorite, bio: me.bio },
+      avatarId: me.avatar_id, favorite: me.favorite, bio: me.bio, availability: me.availability },
     users: usersR.rows.map((u) => ({
       id: u.id, displayName: u.display_name, trainerName: u.trainer_name, role: u.role, status: u.status,
       verified: u.verified, createdAt: u.created_at,
@@ -353,6 +356,7 @@ app.get("/api/state", authAny, async (req, res) => {
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
       lastTrade: u.last_trade, showcase: u.showcase || [], bio: u.bio,
       avatarId: u.avatar_id, favorite: u.favorite,
+      lastSeen: u.last_seen, availability: u.availability,
       rank: u.sanctions_n > 0 ? "marcado"
         : u.trades_done >= 100 ? "oro"
         : u.trades_done >= 25 ? "plata"
@@ -486,10 +490,12 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   const bio = String(req.body?.bio ?? "").trim().slice(0, 300);
   if (hasMoney(bio) || limpia.some((x) => hasMoney(x.species) || hasMoney(x.note || "")))
     return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
+  const disp = String(req.body?.availability || "").trim().slice(0, 120) || null;
+  if (disp && hasMoney(disp)) return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
   const fav = String(req.body?.favorite || "").trim().slice(0, 40) || null;
   if (fav && hasMoney(fav)) return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
-  await q(`UPDATE users SET showcase=$2, bio=$3, favorite=$4 WHERE id=$1`,
-    [req.me.id, JSON.stringify(limpia), bio || null, fav]);
+  await q(`UPDATE users SET showcase=$2, bio=$3, favorite=$4, availability=$5 WHERE id=$1`,
+    [req.me.id, JSON.stringify(limpia), bio || null, fav, disp]);
   if (req.body?.avatar) {
     try {
       const id = await saveImage(req.me.id, null, "avatar", req.body.avatar);
