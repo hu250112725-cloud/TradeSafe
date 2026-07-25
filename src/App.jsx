@@ -118,7 +118,7 @@ function Rep({ userId, onFicha }) {
       <span className="tag tenue">{u.trades} {tx().trades}</span>
       {u.rating && <span className="tag oro">★ {u.rating}</span>}
       {u.sanctions > 0 && <span className="tag lacre">{u.sanctions} {tx().sancion}</span>}
-      {u.newAccount && <span className="tag lacre">{tx().cuentaNueva}</span>}
+      {u.newAccount && <span className={`tag ${u.trades > 0 ? "tenue" : "oro"}`}>{u.trades > 0 ? tx().nuevo : tx().cuentaNueva}</span>}
     </div>
   );
 }
@@ -312,8 +312,29 @@ function Pruebas({ trade, kind, me }) {
   );
 }
 
+/* Muestra el código de recuperación una sola vez, obligando a confirmarlo */
+function CodigoRecuperacion({ code, onListo }) {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <div className="ficha" style={{ borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().codigoRecuperacion}</div>
+      <Aviso tipo="oro">{tx().guardaCodigo}</Aviso>
+      <div className="centrado mt-14">
+        <span className="mono" style={{ fontSize: 22, fontWeight: 800, letterSpacing: 2, wordBreak: "break-all" }}>{code}</span>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+        <button className="btn mini secundario" onClick={async () => {
+          try { await navigator.clipboard.writeText(code); } catch { /* sin permiso */ }
+          setCopiado(true); setTimeout(() => setCopiado(false), 2500);
+        }}>{copiado ? tx().certCopiado : tx().copiarCodigo}</button>
+        <button className="btn mini" onClick={onListo}>{tx().yaLoGuarde}</button>
+      </div>
+    </div>
+  );
+}
+
 /* ================= Autenticación ================= */
-function AuthScreen({ refresh, hasUsers }) {
+function AuthScreen({ refresh, hasUsers, onCodigo }) {
   const [mode, setMode] = useState(hasUsers ? "login" : "setup");
   const [f, setF] = useState({});
   const { run, busy, err, setErr } = useRun(refresh);
@@ -321,20 +342,29 @@ function AuthScreen({ refresh, hasUsers }) {
 
   const submit = () => run(async () => {
     if (mode === "login") return api.login({ email: f.email, pass: f.pass });
+    if (mode === "recover") {
+      const c = await api.recover({ email: f.email, code: f.code, pass: f.pass });
+      onCodigo(c); return;
+    }
     const d = { name: f.name, trainer: f.trainer, email: f.email, pass: f.pass, friendCode: f.friendCode };
-    return mode === "setup" ? api.setup(d) : api.register(d);
+    const c = mode === "setup" ? await api.setup(d) : await api.register(d);
+    onCodigo(c);
   });
 
   return (
     <div style={{ paddingTop: 12 }}>
       <div className="ticket">
         <div className="ticket-cuerpo">
-          <div className="h1">{mode === "setup" ? tx().configInicial : mode === "login" ? tx().entrar : tx().crearCuenta}</div>
+          <div className="h1">
+            {mode === "setup" ? tx().configInicial : mode === "login" ? tx().entrar
+              : mode === "recover" ? tx().recuperarTitulo : tx().crearCuenta}
+          </div>
           <p className="txt-s suave mt-6">
-            {mode === "setup" ? tx().setupIntro : mode === "login" ? tx().loginIntro : tx().registerIntro}
+            {mode === "setup" ? tx().setupIntro : mode === "login" ? tx().loginIntro
+              : mode === "recover" ? tx().recuperarIntro : tx().registerIntro}
           </p>
           <div className="mt-14">
-            {mode !== "login" && (
+            {!["login", "recover"].includes(mode) && (
               <>
                 <Campo label={tx().lblNombre}><input value={f.name || ""} onChange={set("name")} placeholder={tx().phNombre} /></Campo>
                 <Campo label={tx().lblEntrenador}><input value={f.trainer || ""} onChange={set("trainer")} placeholder={tx().phEntrenador} /></Campo>
@@ -342,20 +372,40 @@ function AuthScreen({ refresh, hasUsers }) {
               </>
             )}
             <Campo label={tx().lblEmail}><input type="email" value={f.email || ""} onChange={set("email")} inputMode="email" autoCapitalize="none" /></Campo>
-            <Campo label={mode === "login" ? tx().lblPass : tx().lblPass12}>
+            {mode === "recover" && (
+              <Campo label={tx().lblCodigoRec}>
+                <input value={f.code || ""} onChange={set("code")} placeholder={tx().phCodigoRec}
+                  className="mono" autoCapitalize="characters" />
+              </Campo>
+            )}
+            <Campo label={mode === "login" ? tx().lblPass : mode === "recover" ? tx().lblNuevaPass : tx().lblPass12}>
               <input type="password" value={f.pass || ""} onChange={set("pass")} />
             </Campo>
             {err && <Aviso tipo="lacre">{err}</Aviso>}
             <button className="btn mt-14" disabled={busy} onClick={submit}>
-              {busy ? "…" : mode === "setup" ? tx().btnSetup : mode === "login" ? tx().btnEntrar : tx().btnCrear}
+              {busy ? "…" : mode === "setup" ? tx().btnSetup : mode === "login" ? tx().btnEntrar
+                : mode === "recover" ? tx().btnRecuperar : tx().btnCrear}
             </button>
           </div>
         </div>
-        {hasUsers && (
+        {mode !== "setup" && (
           <div className="ticket-talon centrado">
-            <button className="enlace-volver" onClick={() => { setErr(""); setMode(mode === "login" ? "register" : "login"); }}>
-              {mode === "login" ? tx().irRegistro : tx().irLogin}
-            </button>
+            {mode === "recover" ? (
+              <button className="enlace-volver" onClick={() => { setErr(""); setMode("login"); }}>{tx().volverEntrar}</button>
+            ) : (
+              <>
+                <button className="enlace-volver" onClick={() => { setErr(""); setMode(mode === "login" ? "register" : "login"); }}>
+                  {mode === "login" ? tx().irRegistro : tx().irLogin}
+                </button>
+                {mode === "login" && (
+                  <div style={{ marginTop: 8 }}>
+                    <button className="enlace-volver txt-xs" onClick={() => { setErr(""); setMode("recover"); }}>
+                      {tx().olvideContrasena}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -433,9 +483,18 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   const [motivo, setMotivo] = useState("");
   const [reportado, setReportado] = useState(false);
   const { run, busy, err } = useRun(refresh);
-  const offers = api.snap.offers.filter((o) => o.status === "active")
+  const [orden, setOrden] = useState("reciente");
+  const [tope, setTope] = useState(20);
+  const todas = api.snap.offers.filter((o) => o.status === "active")
     .filter((o) => !soloShiny || o.isShiny)
     .filter((o) => !busca.trim() || (o.species + " " + o.wants).toLowerCase().includes(busca.trim().toLowerCase()));
+  if (orden === "reputacion") {
+    todas.sort((a, b) => {
+      const ua = userById(a.ownerId), ub = userById(b.ownerId);
+      return ((ub?.trades ?? 0) - (ua?.trades ?? 0)) || (Number(ub?.verified) - Number(ua?.verified));
+    });
+  }
+  const offers = todas.slice(0, tope);
 
   if (open) {
     const o = api.snap.offers.find((x) => x.id === open);
@@ -544,8 +603,24 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           onAbrirOferta={(id) => { setVista("ofertas"); setOpen(id); }} />
       )}
       {vista === "ofertas" && (<>
-      <input className="buscador" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={tx().phBuscar} />
-      <label className="check"><input type="checkbox" checked={soloShiny} onChange={(e) => setSoloShiny(e.target.checked)} /> {tx().soloShinys}</label>
+      {todas.length <= 3 && !busca && (
+        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)", boxShadow: "4px 4px 0 var(--verde)" }}>
+          <div className="h2" style={{ marginBottom: 8 }}>{tx().bienvenidaTitulo}</div>
+          <ol style={{ paddingLeft: 20, margin: 0 }}>
+            {tx().bienvenidaPasos.map((p, i) => <li key={i} className="txt-s" style={{ marginBottom: 6 }}>{p}</li>)}
+          </ol>
+        </div>
+      )}
+      <input className="buscador" value={busca} onChange={(e) => { setBusca(e.target.value); setTope(20); }} placeholder={tx().phBuscar} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <label className="check" style={{ margin: 0 }}>
+          <input type="checkbox" checked={soloShiny} onChange={(e) => { setSoloShiny(e.target.checked); setTope(20); }} /> {tx().soloShinys}
+        </label>
+        <select className="select-mini" value={orden} onChange={(e) => setOrden(e.target.value)}>
+          <option value="reciente">{tx().ordenReciente}</option>
+          <option value="reputacion">{tx().ordenReputacion}</option>
+        </select>
+      </div>
       {offers.length === 0 ? (
         <Vacio icono="📦">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
       ) : offers.map((o) => (
@@ -568,6 +643,11 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           <div className="mt-10" style={{ borderTop: "1px solid #d8ded9", paddingTop: 9 }}><Rep userId={o.ownerId} /></div>
         </button>
       ))}
+      {todas.length > offers.length && (
+        <button className="btn secundario" onClick={() => setTope(tope + 20)}>
+          {tx().verMas} ({todas.length - offers.length})
+        </button>
+      )}
       </>)}
     </div>
   );
@@ -798,7 +878,7 @@ function FichaUsuario({ userId, onBack }) {
             {u.verified ? <span className="tag verde">{tx().verificado}</span> : <span className="tag tenue">{tx().sinVerificar}</span>}
             <span className="tag tenue">{u.trades} {tx().trades}</span>
             {u.rating && <span className="tag oro">★ {u.rating}</span>}
-            {u.newAccount && <span className="tag lacre">{tx().cuentaNueva}</span>}
+            {u.newAccount && <span className={`tag ${u.trades > 0 ? "tenue" : "oro"}`}>{u.trades > 0 ? tx().nuevo : tx().cuentaNueva}</span>}
           </div>
           <div className="tags mt-10"><Presencia lastSeen={u.lastSeen} /></div>
           {u.availability && <p className="txt-xs suave mt-6">🕒 {u.availability}</p>}
@@ -1331,6 +1411,8 @@ function Perfil({ me, refresh }) {
   const [avatarPrev, setAvatarPrev] = useState(null);
   const [avatarNuevo, setAvatarNuevo] = useState(null);
   const [copiado, setCopiado] = useState(false);
+  const [codRec, setCodRec] = useState(null);
+  const [passRec, setPassRec] = useState("");
   const certUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/cert/${me.id}`;
   const [tarjeta, setTarjeta] = useState(null);
   const [blobTarjeta, setBlobTarjeta] = useState(null);
@@ -1528,6 +1610,30 @@ function Perfil({ me, refresh }) {
             </>
           )}
         </div>
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().miCodigoRec}</div>
+        {codRec ? (
+          <>
+            <Aviso tipo="oro">{tx().guardaCodigo}</Aviso>
+            <div className="centrado mt-10">
+              <span className="mono" style={{ fontSize: 19, fontWeight: 800, letterSpacing: 1.5, wordBreak: "break-all" }}>{codRec}</span>
+            </div>
+            <button className="btn mini secundario mt-10" onClick={() => setCodRec(null)}>{tx().yaLoGuarde}</button>
+          </>
+        ) : (
+          <>
+            <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().sinCodigoAviso}</p>
+            <Campo label={tx().lblTuPass}>
+              <input type="password" value={passRec} onChange={(e) => setPassRec(e.target.value)} />
+            </Campo>
+            <button className="btn mini secundario" disabled={busy || passRec.length < 8}
+              onClick={() => run(async () => { setCodRec(await api.reissueRecovery(passRec)); setPassRec(""); })}>
+              {tx().regenerarCodigo}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="ficha mt-14">
@@ -1738,6 +1844,7 @@ export default function App() {
   const [abrirOferta, setAbrirOferta] = useState(null);
   const [stats, setStats] = useState(null);
   const [verAyuda, setVerAyuda] = useState(false);
+  const [codigoNuevo, setCodigoNuevo] = useState(null);
   const [tourVisto, setTourVisto] = useState(() => {
     try { return localStorage.getItem("ts_tour") === "1"; } catch { return true; }
   });
@@ -1823,6 +1930,10 @@ export default function App() {
     }
   }, [me, phase]);
 
+  // Si hemos tenido sesión, es que la instancia ya está configurada:
+  // sin esto, al cerrar sesión volvía a pedir "Configuración inicial".
+  useEffect(() => { if (me) setHasUsers(true); }, [me]);
+
   const nMatches = api.snap?.matches?.length || 0;
   const tabs = [
     ["mercado", nMatches > 0 ? `${tx().tabMercado} ●` : tx().tabMercado],
@@ -1890,9 +2001,13 @@ export default function App() {
           <Vacio icono="◈">{tx().conectando}</Vacio>
         ) : phase === "sin-conexion" ? (
           <Vacio icono="📡">{tx().sinConexion1}<br />{tx().sinConexion2} <b className="mono">DATABASE_URL</b> · <b className="mono">JWT_SECRET</b> {tx().enVercel}</Vacio>
+        ) : codigoNuevo ? (
+          <div style={{ paddingTop: 12 }}>
+            <CodigoRecuperacion code={codigoNuevo} onListo={() => { setCodigoNuevo(null); refresh(); }} />
+          </div>
         ) : !me ? (
           <>
-            <AuthScreen refresh={refresh} hasUsers={hasUsers} />
+            <AuthScreen refresh={refresh} hasUsers={hasUsers} onCodigo={setCodigoNuevo} />
             {stats && stats.usuarios > 0 && (
               <div className="ficha mt-14">
                 <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().statsTitulo}</div>

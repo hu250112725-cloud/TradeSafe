@@ -100,7 +100,8 @@ app.post("/api/setup", async (req, res) => {
   try {
     const u = await createUser(req.body, "admin", true, fp(req));
     await audit(u.id, "setup.admin_created", u.id, "Configuración inicial");
-    res.status(201).json({ token: token(u) });
+    const recovery = await asignarRecuperacion(u.id);
+    res.status(201).json({ token: token(u), recovery });
   } catch (e) {
     if (e && e.code === "23505") return err(res, "conflict", 409, "Email o nombre ya en uso");
     return err(res, "validation_error", 422, typeof e === "string" ? e : "Datos inválidos");
@@ -108,6 +109,20 @@ app.post("/api/setup", async (req, res) => {
 });
 
 const codigoEmail = () => String(Math.floor(100000 + Math.random() * 900000));
+
+/* ---------- Código de recuperación ---------- */
+// Legible y sin caracteres confundibles: TS-K7M2-QX9P-4TDN
+function nuevoCodigoRecuperacion() {
+  const grupo = () => Array.from({ length: 4 }, () =>
+    CODE_ABC[crypto.randomInt(CODE_ABC.length)]).join("");
+  return `TS-${grupo()}-${grupo()}-${grupo()}`;
+}
+async function asignarRecuperacion(userId) {
+  const code = nuevoCodigoRecuperacion();
+  const hash = await bcrypt.hash(code, 10);
+  await q(`UPDATE users SET recovery_hash=$2, recovery_at=now() WHERE id=$1`, [userId, hash]);
+  return code;
+}
 
 async function iniciarVerifEmail(u) {
   if (!mailActivo()) {
@@ -127,11 +142,19 @@ async function iniciarVerifEmail(u) {
   return envio.ok;
 }
 
+const MAX_ALTAS_DIA = 3;
 app.post("/api/register", async (req, res) => {
+  const huella = fp(req);
+  const altas = await q(
+    `SELECT count(*)::int AS n FROM users WHERE signup_fp=$1 AND created_at > now() - interval '24 hours'`,
+    [huella]);
+  if (altas.rows[0].n >= MAX_ALTAS_DIA)
+    return err(res, "too_many_attempts", 429, "Se han creado demasiadas cuentas desde aquí hoy. Inténtalo mañana.");
   try {
     const u = await createUser(req.body, "user", false, fp(req));
     const enviado = await iniciarVerifEmail(u);
-    res.status(201).json({ token: token(u), emailSent: enviado });
+    const recovery = await asignarRecuperacion(u.id);
+    res.status(201).json({ token: token(u), emailSent: enviado, recovery });
   } catch (e) {
     if (e && e.code === "23505") return err(res, "conflict", 409, "Email o nombre ya en uso");
     return err(res, "validation_error", 422, typeof e === "string" ? e : "Datos inválidos");
@@ -175,6 +198,55 @@ app.post("/api/login", async (req, res) => {
   if (u.status === "deleted") return err(res, "unauthorized", 401, "Credenciales incorrectas");
   await q(`DELETE FROM login_attempts WHERE email=$1`, [mail]);
   res.json({ token: token(u) });
+});
+
+/* ---------- Recuperar la cuenta con el código ---------- */
+app.post("/api/recover", async (req, res) => {
+  const mail = String(req.body?.email || "").trim().toLowerCase();
+  const code = String(req.body?.code || "").trim().toUpperCase().replace(/\s/g, "");
+  const pass = String(req.body?.pass || "");
+  const huella = fp(req);
+  // Mismo límite que el login para que nadie pruebe códigos a lo bruto
+  const intentos = await q(
+    `SELECT count(*)::int AS n FROM login_attempts WHERE (email=$1 OR fp=$2) AND at > now() - interval '15 minutes'`,
+    [mail, huella]);
+  if (intentos.rows[0].n >= 8)
+    return err(res, "too_many_attempts", 429, "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.");
+  if (pass.length < 12) return err(res, "validation_error", 422, "La contraseña necesita al menos 12 caracteres");
+
+  const r = await q(`SELECT * FROM users WHERE email=$1 AND status <> 'deleted'`, [mail]);
+  const u = r.rows[0];
+  const vale = u && u.recovery_hash && await bcrypt.compare(code, u.recovery_hash);
+  if (!vale) {
+    await q(`INSERT INTO login_attempts (email, fp) VALUES ($1,$2)`, [mail, huella]);
+    return err(res, "unauthorized", 401, "Email o código de recuperación incorrectos");
+  }
+  await q(`UPDATE users SET pass_hash=$2 WHERE id=$1`, [u.id, await bcrypt.hash(pass, 10)]);
+  await q(`DELETE FROM login_attempts WHERE email=$1`, [mail]);
+  const recovery = await asignarRecuperacion(u.id);   // el código usado se invalida
+  await audit(u.id, "account.recovered", u.id, "Contraseña restablecida con código");
+  res.json({ token: token(u), recovery });
+});
+
+// Regenerar el código estando dentro (por si se perdió)
+app.post("/api/me/recovery", auth, async (req, res) => {
+  const pass = String(req.body?.pass || "");
+  if (!(await bcrypt.compare(pass, req.me.pass_hash)))
+    return err(res, "unauthorized", 401, "Contraseña incorrecta");
+  const recovery = await asignarRecuperacion(req.me.id);
+  await audit(req.me.id, "account.recovery_reissued", req.me.id, "Código de recuperación regenerado");
+  res.json({ recovery });
+});
+
+// El staff puede emitir uno a quien haya verificado su cuenta de HOME
+app.post("/api/users/:id/recovery", auth, staff, async (req, res) => {
+  const r = await q(`SELECT id, verified FROM users WHERE id=$1 AND status <> 'deleted'`, [req.params.id]);
+  if (!r.rowCount) return err(res, "not_found", 404, "Usuario no encontrado");
+  if (!r.rows[0].verified)
+    return err(res, "forbidden", 403, "Solo para cuentas con HOME verificado (así se comprueba la identidad)");
+  const recovery = await asignarRecuperacion(r.rows[0].id);
+  await audit(req.me.id, "account.recovery_by_staff", r.rows[0].id, "Código emitido por staff");
+  res.json({ recovery });
 });
 
 /* ---------- Imágenes ---------- */
@@ -241,6 +313,22 @@ async function limpiarImagenes() {
   // Verificaciones ya aprobadas: solo se conserva 30 días
   await q(`DELETE FROM images WHERE kind='verification' AND created_at < now() - interval '30 days'
            AND owner_id IN (SELECT id FROM users WHERE verified = true)`);
+  // Avatares antiguos: solo se guarda el que está en uso
+  await q(`DELETE FROM images i WHERE i.kind='avatar'
+           AND NOT EXISTS (SELECT 1 FROM users u WHERE u.avatar_id = i.id)`);
+  // Capturas de origen de ofertas ya retiradas hace más de 30 días
+  await q(`DELETE FROM images i WHERE i.kind='origin'
+           AND i.created_at < now() - interval '30 days'
+           AND NOT EXISTS (
+             SELECT 1 FROM offers o
+             WHERE o.status='active' AND (o.data->>'originImage') = i.id::text)`);
+  // Cualquier imagen huérfana de más de 7 días (subidas que nunca se llegaron a usar)
+  await q(`DELETE FROM images i
+           WHERE i.created_at < now() - interval '7 days'
+             AND i.trade_id IS NULL
+             AND i.kind NOT IN ('verification')
+             AND NOT EXISTS (SELECT 1 FROM users u WHERE u.avatar_id = i.id)
+             AND NOT EXISTS (SELECT 1 FROM offers o WHERE (o.data->>'originImage') = i.id::text)`);
 }
 
 async function expireStale() {
@@ -303,8 +391,13 @@ app.get("/api/state", authAny, async (req, res) => {
     : await q(`SELECT * FROM trades WHERE a_id=$1 OR b_id=$1 ORDER BY created_at DESC LIMIT 200`, [me.id]);
 
   const tradeIds = tradesR.rows.map((t) => t.id);
-  const msgsR = tradeIds.length
-    ? await q(`SELECT * FROM messages WHERE trade_id = ANY($1) ORDER BY id`, [tradeIds])
+  // El chat solo se envía de los intercambios vivos: es lo que más pesa
+  const idsVivos = tradesR.rows.filter((t) => !["closed", "cancelled"].includes(t.state)).map((t) => t.id);
+  const msgsR = idsVivos.length
+    ? await q(`SELECT * FROM (
+                 SELECT *, row_number() OVER (PARTITION BY trade_id ORDER BY id DESC) AS n
+                 FROM messages WHERE trade_id = ANY($1)
+               ) x WHERE x.n <= 60 ORDER BY id`, [idsVivos])
     : { rows: [] };
   const proofsR = tradeIds.length
     ? await q(`SELECT id, trade_id, owner_id, kind FROM images WHERE trade_id = ANY($1) ORDER BY created_at`, [tradeIds])
@@ -330,12 +423,12 @@ app.get("/api/state", authAny, async (req, res) => {
             EXISTS (SELECT 1 FROM giveaway_entries e WHERE e.giveaway_id=g.id AND e.user_id=$1) AS mine
      FROM giveaways g
      WHERE g.status='open' OR g.drawn_at > now() - interval '30 days'
-     ORDER BY g.created_at DESC LIMIT 20`, [me.id]);
+     ORDER BY g.created_at DESC LIMIT 10`, [me.id]);
   const boardR = await q(
     `SELECT b.id, b.user_id, b.body, b.created_at, u.display_name
      FROM board b JOIN users u ON u.id=b.user_id
      WHERE NOT b.hidden AND b.created_at > now() - interval '14 days'
-     ORDER BY b.id DESC LIMIT 60`);
+     ORDER BY b.id DESC LIMIT 30`);
 
   const sanctionsR = await q(`SELECT s.*, d.decided_by AS dispute_decided_by FROM sanctions s
     LEFT JOIN disputes d ON d.id = s.dispute_id
@@ -344,7 +437,7 @@ app.get("/api/state", authAny, async (req, res) => {
   const reportsR = esStaff
     ? await q(`SELECT a.id, a.actor_id, a.target, a.reason, a.created_at, o.owner_id, o.data, o.status
                FROM audit a JOIN offers o ON o.id::text = a.target
-               WHERE a.action='offer.report' AND o.status='active' ORDER BY a.id DESC LIMIT 100`)
+               WHERE a.action='offer.report' AND o.status='active' ORDER BY a.id DESC LIMIT 50`)
     : { rows: [] };
 
   const cuerpo = {

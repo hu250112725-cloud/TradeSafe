@@ -32,8 +32,11 @@ async function call(path, opts = {}) {
 }
 
 export const bootstrap = () => call("/bootstrap");
-export async function setup(d) { const r = await call("/setup", { method: "POST", body: d }); setToken(r.token); await sync(); }
-export async function register(d) { const r = await call("/register", { method: "POST", body: d }); setToken(r.token); await sync(); }
+export async function setup(d) { const r = await call("/setup", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }
+export async function register(d) { const r = await call("/register", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }
+export async function recover(d) { const r = await call("/recover", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }
+export async function reissueRecovery(pass) { const r = await call("/me/recovery", { method: "POST", body: { pass } }); return r.recovery; }
+export async function staffRecovery(id) { const r = await call(`/users/${id}/recovery`, { method: "POST" }); return r.recovery; }
 export async function login(d) { const r = await call("/login", { method: "POST", body: d }); setToken(r.token); await sync(); }
 export function logout() { setToken(null); snap = null; }
 
