@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from "react";
+import { useState, useEffect, useReducer, useRef } from "react";
 import * as api from "./api.js";
 import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
@@ -843,7 +843,13 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const yoConfirme = soyA ? t.confirmedA : t.confirmedB;
   const miDisputa = api.snap.disputes.find((d) => d.tradeId === t.id);
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
+  const cajaChat = useRef(null);
   useEffect(() => { marcarLeido(t.id); }, [t.id, t.messages?.length]);
+  // Bajar al último mensaje al abrir el chat y al recibir uno nuevo
+  useEffect(() => {
+    const c = cajaChat.current;
+    if (c) c.scrollTop = c.scrollHeight;
+  }, [t.messages?.length, t.id]);
   const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
   const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
   const enviar = async () => {
@@ -1088,28 +1094,41 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         <>
           <div className="ticket mt-14">
             <div className="eyebrow" style={{ padding: "10px 14px 0" }}>{tx().chatTitulo}</div>
-            <div className="chat-caja">
-              {t.messages.length === 0 && <div className="txt-xs suave centrado">{tx().chatVacio}</div>}
+            <div className="chat-caja" ref={cajaChat}>
+              {t.messages.length === 0 && (
+                <div className="chat-vacio txt-s"><span className="ic">💬</span>{tx().chatVacio}</div>
+              )}
               {t.messages.map((m, i) => {
                 const previo = t.messages[i - 1];
                 const nuevoDia = !previo || !mismoDia(previo.at, m.at);
                 const esHoy = mismoDia(m.at, new Date());
                 const esAyer = mismoDia(m.at, Date.now() - 86400000);
+                if (m.system) {
+                  return (
+                    <span key={i} style={{ display: "contents" }}>
+                      {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
+                      <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
+                    </span>
+                  );
+                }
+                const mia = m.by === me.id;
+                // Primer mensaje de una tanda de la misma persona
+                const inicio = nuevoDia || !previo || previo.system || previo.by !== m.by
+                  || new Date(m.at) - new Date(previo.at) > 300000;
+                const autor = mia ? null : userById(m.by);
                 return (
                   <span key={i} style={{ display: "contents" }}>
-                    {nuevoDia && (
-                      <div className="txt-xs suave centrado" style={{ margin: "6px 0 2px" }}>
-                        {esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}
-                      </div>
-                    )}
-                    {m.system ? (
-                      <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
-                    ) : (
-                      <div className={`burbuja ${m.by === me.id ? "mia" : "suya"}`}>
+                    {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
+                    {inicio && !mia && autor && <div className="autor-msg">{autor.displayName}</div>}
+                    <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
+                      {!mia && (inicio && autor?.avatarId
+                        ? <img className="msg-avatar" src={api.imageUrl(autor.avatarId)} alt="" />
+                        : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "👤" : ""}</span>)}
+                      <div className={`burbuja ${mia ? "mia" : "suya"}`}>
                         {m.text}
                         <span className="hora-msg">{hora(m.at)}</span>
                       </div>
-                    )}
+                    </div>
                   </span>
                 );
               })}
