@@ -1,6 +1,6 @@
 import { useState, useEffect, useReducer } from "react";
 import * as api from "./api.js";
-import { fecha, userById, sanctionsOf } from "./api.js";
+import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
 import { SPECIES, spriteShiny } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
@@ -1090,9 +1090,29 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             <div className="eyebrow" style={{ padding: "10px 14px 0" }}>{tx().chatTitulo}</div>
             <div className="chat-caja">
               {t.messages.length === 0 && <div className="txt-xs suave centrado">{tx().chatVacio}</div>}
-              {t.messages.map((m, i) => m.system
-                ? <Aviso key={i} tipo={m.kind}>{tSys(m.text)}</Aviso>
-                : <div key={i} className={`burbuja ${m.by === me.id ? "mia" : "suya"}`}>{m.text}</div>)}
+              {t.messages.map((m, i) => {
+                const previo = t.messages[i - 1];
+                const nuevoDia = !previo || !mismoDia(previo.at, m.at);
+                const esHoy = mismoDia(m.at, new Date());
+                const esAyer = mismoDia(m.at, Date.now() - 86400000);
+                return (
+                  <span key={i} style={{ display: "contents" }}>
+                    {nuevoDia && (
+                      <div className="txt-xs suave centrado" style={{ margin: "6px 0 2px" }}>
+                        {esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}
+                      </div>
+                    )}
+                    {m.system ? (
+                      <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
+                    ) : (
+                      <div className={`burbuja ${m.by === me.id ? "mia" : "suya"}`}>
+                        {m.text}
+                        <span className="hora-msg">{hora(m.at)}</span>
+                      </div>
+                    )}
+                  </span>
+                );
+              })}
             </div>
             <div className="chat-form">
               <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
