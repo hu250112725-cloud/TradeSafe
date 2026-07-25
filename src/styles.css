@@ -290,3 +290,10 @@ body.oscuro .aviso.verde { color: #b6ebcb; }
 .tabbar-inner { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .tabbar-inner::-webkit-scrollbar { display: none; }
 .tab { flex: 0 0 auto; min-width: 62px; padding: 10px 10px; white-space: nowrap; }
+
+/* Los botones que actúan como filas deben heredar el color del texto,
+   si no iOS los pinta de azul (sobre todo en modo oscuro). */
+button.fila, .fila button, .ficha button:not(.btn):not(.tab) { color: inherit; }
+a.btn { color: var(--papel-alto); }
+body.oscuro a.btn { color: #0d1a12; }
+a.btn.secundario { color: var(--tinta); }

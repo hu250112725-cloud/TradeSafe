@@ -3,7 +3,6 @@ import * as api from "./api.js";
 import { fecha, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
 import { SPECIES } from "./species.js";
-import { guia } from "./guide.js";
 
 /* ================= Piezas de UI ================= */
 const Sello = ({ code, verde, grande }) => (
@@ -478,51 +477,22 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   );
 }
 
-/* ================= Centro de ayuda ================= */
+/* ================= Centro de ayuda: vídeo tutorial ================= */
 function Ayuda({ onCerrar }) {
-  const [tema, setTema] = useState(null);
-  const [verVideo, setVerVideo] = useState(false);
-  const temas = guia(getLang()).temas;
-  const t = temas.find((x) => x.id === tema);
   return (
     <div className="ficha" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <div className="eyebrow">{tx().ayuda}</div>
         <button className="enlace-volver" onClick={onCerrar}>✕</button>
       </div>
-      {!t ? (
-        <>
-          <p className="txt-s suave" style={{ marginBottom: 12 }}>{tx().ayudaIntro}</p>
-          {!verVideo ? (
-            <button className="btn mini" style={{ marginBottom: 12 }} onClick={() => setVerVideo(true)}>{tx().tourGuiado}</button>
-          ) : (
-            <div style={{ marginBottom: 14 }}>
-              <video controls autoPlay playsInline poster={`/poster-${getLang()}.jpg`}
-                style={{ width: "100%", borderRadius: 12, border: "2px solid var(--tinta)", background: "#000", display: "block" }}>
-                <source src={`/tutorial-${getLang()}.mp4`} type="video/mp4" />
-              </video>
-              <a className="btn mini secundario mt-10" style={{ textDecoration: "none", textAlign: "center", display: "block" }}
-                href={`/tutorial-${getLang()}.mp4`} download>{tx().descargarVideo}</a>
-            </div>
-          )}
-          {temas.map((x) => (
-            <button key={x.id} className="fila" style={{ width: "100%", textAlign: "left", background: "none",
-              border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "11px 0" }}
-              onClick={() => setTema(x.id)}>
-              <span className="txt-s"><span style={{ marginRight: 8 }}>{x.icono}</span><b>{x.t}</b></span>
-              <span className="suave">›</span>
-            </button>
-          ))}
-        </>
-      ) : (
-        <>
-          <button className="enlace-volver" onClick={() => setTema(null)}>{tx().volverAyuda}</button>
-          <div className="h2 mt-10">{t.icono} {t.t}</div>
-          <ol style={{ margin: "12px 0 0", paddingLeft: 20 }}>
-            {t.pasos.map((p, i) => <li key={i} className="txt-s" style={{ marginBottom: 9 }}>{p}</li>)}
-          </ol>
-        </>
-      )}
+      <video controls playsInline preload="metadata" poster={`/poster-${getLang()}.jpg`}
+        style={{ display: "block", width: "100%", maxHeight: "58vh", aspectRatio: "9 / 16",
+          objectFit: "contain", borderRadius: 12, border: "2px solid var(--tinta)",
+          background: "#000", margin: "0 auto" }}>
+        <source src={`/tutorial-${getLang()}.mp4`} type="video/mp4" />
+      </video>
+      <a className="btn mini secundario mt-10" style={{ textDecoration: "none", textAlign: "center", display: "block" }}
+        href={`/tutorial-${getLang()}.mp4`} download>{tx().descargarVideo}</a>
     </div>
   );
 }
