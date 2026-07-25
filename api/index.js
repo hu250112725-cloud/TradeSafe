@@ -280,7 +280,13 @@ app.get("/api/state", authAny, async (req, res) => {
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
 
-  const offersR = await q(`SELECT * FROM offers WHERE status='active' OR owner_id=$1 ORDER BY created_at DESC LIMIT 200`, [me.id]);
+  // Incluye también las ofertas de mis intercambios aunque ya no estén activas,
+  // para que el historial no muestre huecos.
+  const offersR = await q(
+    `SELECT * FROM offers
+     WHERE status='active' OR owner_id=$1
+        OR id IN (SELECT offer_id FROM trades WHERE a_id=$1 OR b_id=$1 OR mediator_id=$1)
+     ORDER BY created_at DESC LIMIT 300`, [me.id]);
 
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const tradesR = esStaff

@@ -1037,7 +1037,10 @@ function TradeView({ trade: id, me, refresh, onBack }) {
 function MisTrades({ me, refresh, abrir, onAbierto }) {
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
-  const mine = api.snap.trades.filter((t) => t.aId === me.id || t.bId === me.id);
+  const [verHistorial, setVerHistorial] = useState(false);
+  const todos = api.snap.trades.filter((t) => t.aId === me.id || t.bId === me.id);
+  const terminados = todos.filter((t) => ["closed", "cancelled"].includes(t.state));
+  const mine = verHistorial ? terminados : todos.filter((t) => !["closed", "cancelled"].includes(t.state));
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const casos = puedeMediar
     ? api.snap.trades.filter((t) => t.aId !== me.id && t.bId !== me.id && (t.mediationRequested || t.mediatorId === me.id))
@@ -1064,8 +1067,18 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
           ))}
         </div>
       )}
+      <div className="tags" style={{ marginBottom: 14 }}>
+        <button className={`btn mini ${verHistorial ? "secundario" : ""}`} onClick={() => setVerHistorial(false)}>
+          {tx().enCurso} ({todos.length - terminados.length})
+        </button>
+        <button className={`btn mini ${verHistorial ? "" : "secundario"}`} onClick={() => setVerHistorial(true)}>
+          {tx().historial} ({terminados.length})
+        </button>
+      </div>
       {mine.length === 0 ? (
-        <Vacio icono="🤝">{tx().sinTrades1}<br />{tx().sinTrades2} <b>{tx().tabMercado}</b> {tx().sinTrades3}</Vacio>
+        todos.length === 0
+          ? <Vacio icono="🤝">{tx().sinTrades1}<br />{tx().sinTrades2} <b>{tx().tabMercado}</b> {tx().sinTrades3}</Vacio>
+          : <Vacio icono={verHistorial ? "📜" : "✅"}>{verHistorial ? tx().sinHistorial : tx().sinActivos}</Vacio>
       ) : mine.map((t) => {
         const otro = userById(t.aId === me.id ? t.bId : t.aId);
         const offer = api.snap.offers.find((o) => o.id === t.offerId);
