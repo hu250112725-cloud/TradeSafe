@@ -256,8 +256,9 @@ async function expireStale() {
 let ultimaLimpieza = 0;
 app.get("/api/state", authAny, async (req, res) => {
   // Presencia: se actualiza como mucho una vez por minuto para no castigar la base
-  if (!req.me.last_seen || Date.now() - new Date(req.me.last_seen) > 60000)
-    q(`UPDATE users SET last_seen=now() WHERE id=$1`, [req.me.id]).catch(() => {});
+  const tz = /^[A-Za-z_+\-\/]{3,60}$/.test(String(req.query.tz || "")) ? String(req.query.tz) : null;
+  if (!req.me.last_seen || Date.now() - new Date(req.me.last_seen) > 60000 || (tz && tz !== req.me.timezone))
+    q(`UPDATE users SET last_seen=now(), timezone=COALESCE($2, timezone) WHERE id=$1`, [req.me.id, tz]).catch(() => {});
   await expireStale();
   // Limpieza de imágenes como mucho una vez por hora por instancia
   if (Date.now() - ultimaLimpieza > 3600000) {
@@ -278,7 +279,7 @@ app.get("/api/state", authAny, async (req, res) => {
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
       (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
       (SELECT max(t.created_at) FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS last_trade,
-      u.showcase, u.bio, u.avatar_id, u.favorite, u.last_seen, u.availability,
+      u.showcase, u.bio, u.avatar_id, u.favorite, u.last_seen, u.availability, u.timezone,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
@@ -356,7 +357,7 @@ app.get("/api/state", authAny, async (req, res) => {
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
       lastTrade: u.last_trade, showcase: u.showcase || [], bio: u.bio,
       avatarId: u.avatar_id, favorite: u.favorite,
-      lastSeen: u.last_seen, availability: u.availability,
+      lastSeen: u.last_seen, availability: u.availability, timezone: u.timezone,
       rank: u.sanctions_n > 0 ? "marcado"
         : u.trades_done >= 100 ? "oro"
         : u.trades_done >= 25 ? "plata"

@@ -297,3 +297,9 @@ button.fila, .fila button, .ficha button:not(.btn):not(.tab) { color: inherit; }
 a.btn { color: var(--papel-alto); }
 body.oscuro a.btn { color: #0d1a12; }
 a.btn.secundario { color: var(--tinta); }
+
+/* Hora dentro de la burbuja del chat */
+.hora-msg {
+  display: block; font-size: 10px; opacity: .55; margin-top: 3px;
+  text-align: right; font-family: "Chivo Mono", ui-monospace, monospace;
+}

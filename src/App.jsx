@@ -887,7 +887,18 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         )}
       </div>
 
-      <div className="ficha mt-14"><div className="eyebrow" style={{ marginBottom: 6 }}>{tx().contraparte}</div><Rep userId={otroId} /></div>
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().contraparte}</div>
+        <Rep userId={otroId} />
+        <div className="tags mt-6"><Presencia lastSeen={otro?.lastSeen} /></div>
+        {otro?.timezone && horaEn(otro.timezone) && (
+          <p className="txt-xs suave mt-6">
+            🕒 {tx().suHora}: <b>{horaEn(otro.timezone)}</b>
+            <span className="suave"> · {tx().tuHora}: {hora(new Date().toISOString())}</span>
+          </p>
+        )}
+        {otro?.availability && <p className="txt-xs suave mt-6">📅 {otro.availability}</p>}
+      </div>
       {["proposal", "contract", "pre_proof"].includes(t.state) && (
         <p className="txt-xs suave mt-6">{tx().avisoCaducidad}</p>
       )}

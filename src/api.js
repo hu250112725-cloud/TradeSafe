@@ -40,7 +40,9 @@ export function logout() { setToken(null); snap = null; }
 let etag = null;
 export async function sync() {
   if (!getToken()) { snap = null; etag = null; return; }
-  const res = await fetch(BASE + "/state", {
+  let tz = "";
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* sin Intl */ }
+  const res = await fetch(BASE + "/state" + (tz ? "?tz=" + encodeURIComponent(tz) : ""), {
     headers: { Authorization: "Bearer " + getToken(), ...(etag ? { "If-None-Match": etag } : {}) },
   });
   if (res.status === 304) return;            // nada cambió: ahorra datos y batería
@@ -88,6 +90,16 @@ export async function resendEmail() { await call("/email/resend", { method: "POS
 export async function decideAppeal(sanctionId, overturn) { await call(`/sanctions/${sanctionId}/appeal/decide`, { method: "POST", body: { overturn } }); await sync(); }
 
 import { getLang } from "./i18n.js";
+// Hora local del dispositivo (cada país ve la suya)
+export const hora = (iso) => new Date(iso).toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
+// Hora actual en el huso de otra persona
+export const horaEn = (tz) => {
+  try { return new Date().toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit", timeZone: tz }); }
+  catch { return null; }
+};
+export const diaCorto = (iso) => new Date(iso).toLocaleDateString(getLang(), { day: "numeric", month: "short" });
+export const mismoDia = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+
 export const fecha = (iso) => new Date(iso).toLocaleDateString(getLang(), { day: "numeric", month: "short", year: "numeric" });
 export const userById = (id) => snap?.users.find((u) => u.id === id) ?? null;
 export const sanctionsOf = (id) => snap?.sanctions.filter((s) => s.userId === id) ?? [];
