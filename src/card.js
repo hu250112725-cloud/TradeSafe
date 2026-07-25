@@ -1,6 +1,7 @@
 // Dibuja la tarjeta de entrenador en un canvas y la devuelve como imagen.
 // Formato 1080x1350 (4:5), el que mejor se ve en Facebook e Instagram.
 import QRCode from "qrcode";
+import { spriteShiny, spriteShinyAlt } from "./species.js";
 
 const C = {
   papel: "#f5f8f4", alto: "#ffffff", tinta: "#121a16", suave: "#4a5a51",
@@ -129,11 +130,28 @@ export async function dibujarTarjeta(datos, url, lang = "es") {
   }
   const nx = av ? AVX + AVD + 34 : 100;
   ctx.textAlign = "left";
-  encaja(ctx, datos.trainer, W - nx - 110, av ? 84 : 104);
+  const anchoNombre = (datos.favorite ? W - 330 : W - 110) - nx;
+  encaja(ctx, datos.trainer, anchoNombre, av ? 84 : 104);
   ctx.fillStyle = C.tinta;
   ctx.fillText(datos.trainer, nx, 348);
   fuente(27, 500); ctx.fillStyle = C.suave;
   ctx.fillText(`${T.home}: ${datos.homeName}`, nx, 390);
+  // Sprite shiny del Pokémon favorito, a la derecha
+  let sprite = null;
+  if (datos.favorite) {
+    sprite = await cargar(spriteShiny(datos.favorite));
+    if (!sprite) sprite = await cargar(spriteShinyAlt(datos.favorite));
+  }
+  const SPD = 200, SPX = W - 118 - SPD, SPY = 258;
+  if (sprite) {
+    // halo suave para que destaque sobre el papel
+    const g = ctx.createRadialGradient(SPX + SPD / 2, SPY + SPD / 2, 10, SPX + SPD / 2, SPY + SPD / 2, SPD / 2);
+    g.addColorStop(0, "rgba(224,185,63,.30)");
+    g.addColorStop(1, "rgba(224,185,63,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(SPX + SPD / 2, SPY + SPD / 2, SPD / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.drawImage(sprite, SPX, SPY, SPD, SPD);
+  }
   if (datos.favorite) {
     fuente(17, 800); ctx.fillStyle = C.verde;
     ctx.fillText(T.favorito.split("").join("\u2009"), nx, 428);

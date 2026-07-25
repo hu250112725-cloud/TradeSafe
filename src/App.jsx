@@ -2,7 +2,7 @@ import { useState, useEffect, useReducer } from "react";
 import * as api from "./api.js";
 import { fecha, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
-import { SPECIES } from "./species.js";
+import { SPECIES, spriteShiny } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
 
 /* ================= Piezas de UI ================= */
@@ -18,6 +18,16 @@ const Campo = ({ label, error, children }) => (
 );
 
 const RANGOS = { novato: "rankNovato", bronce: "rankBronce", plata: "rankPlata", oro: "rankOro", marcado: "rankMarcado" };
+
+// Sprite shiny del Pokémon (se oculta solo si no carga)
+function Sprite({ nombre, tam = 44 }) {
+  const [falla, setFalla] = useState(false);
+  const url = nombre ? spriteShiny(nombre) : null;
+  if (!url || falla) return null;
+  return <img src={url} alt="" width={tam} height={tam} loading="lazy"
+    onError={() => setFalla(true)}
+    style={{ width: tam, height: tam, objectFit: "contain", flexShrink: 0 }} />;
+}
 
 function CampoEspecie({ label, value, onChange, placeholder }) {
   const [foco, setFoco] = useState(false);
@@ -688,7 +698,12 @@ function FichaUsuario({ userId, onBack }) {
             <div>
               <div className="h2">{u.displayName}</div>
               <div className="txt-xs suave">{tx().entrenador} {u.trainerName}</div>
-              {u.favorite && <div className="txt-xs" style={{ color: "var(--verde)", fontWeight: 700 }}>★ {u.favorite}</div>}
+              {u.favorite && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <Sprite nombre={u.favorite} tam={34} />
+                  <span className="txt-xs" style={{ color: "var(--verde)", fontWeight: 700 }}>★ {u.favorite}</span>
+                </div>
+              )}
             </div>
           </div>
           <div className="tags mt-10">
@@ -1275,7 +1290,12 @@ function Perfil({ me, refresh }) {
             if (img) { setAvatarPrev(img); setAvatarNuevo(img); }
           }}>{me.avatarId || avatarPrev ? tx().btnCambiarFoto : tx().btnFoto}</button>
         </div>
-        <CampoEspecie label={tx().lblFavorito} value={fav} onChange={setFav} placeholder={tx().phEspecie} />
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <CampoEspecie label={tx().lblFavorito} value={fav} onChange={setFav} placeholder={tx().phEspecie} />
+          </div>
+          <div style={{ marginBottom: 12 }}><Sprite nombre={fav} tam={58} /></div>
+        </div>
         <div className="eyebrow" style={{ margin: "16px 0 8px" }}>{tx().vitrina}</div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().vitrinaIntro}</p>
         <Campo label={tx().lblBio}><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} /></Campo>
