@@ -478,48 +478,10 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   );
 }
 
-/* ================= Tour guiado ================= */
-function Tour({ paso, setPaso, onCerrar }) {
-  const pasos = guia(getLang()).tour;
-  const p = pasos[paso];
-  if (!p) return null;
-  const ultimo = paso === pasos.length - 1;
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column",
-      justifyContent: "flex-end", background: "rgba(0,0,0,.45)", padding: "0 14px 92px" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
-      <div className="ficha" style={{ maxWidth: 432, margin: "0 auto", width: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span className="eyebrow">{tx().tourPaso(paso + 1, pasos.length)}</span>
-          <button className="enlace-volver" onClick={onCerrar}>{tx().saltar} ✕</button>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-          <span style={{ fontSize: 30, lineHeight: 1 }}>{p.icono}</span>
-          <div>
-            <div className="h2">{p.t}</div>
-            <p className="txt-s suave mt-6">{p.d}</p>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 5, justifyContent: "center", margin: "14px 0 12px" }}>
-          {pasos.map((_, i) => (
-            <span key={i} style={{ width: i === paso ? 18 : 7, height: 7, borderRadius: 99,
-              background: i === paso ? "var(--verde)" : "var(--tinta-suave)", opacity: i === paso ? 1 : .4, transition: "width .15s" }} />
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {paso > 0 && <button className="btn mini secundario" style={{ flex: 1 }} onClick={() => setPaso(paso - 1)}>{tx().anterior}</button>}
-          <button className="btn mini" style={{ flex: 2 }} onClick={() => (ultimo ? onCerrar() : setPaso(paso + 1))}>
-            {ultimo ? tx().entendido : tx().siguiente}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ================= Centro de ayuda ================= */
-function Ayuda({ onTour, onCerrar }) {
+function Ayuda({ onCerrar }) {
   const [tema, setTema] = useState(null);
+  const [verVideo, setVerVideo] = useState(false);
   const temas = guia(getLang()).temas;
   const t = temas.find((x) => x.id === tema);
   return (
@@ -531,7 +493,18 @@ function Ayuda({ onTour, onCerrar }) {
       {!t ? (
         <>
           <p className="txt-s suave" style={{ marginBottom: 12 }}>{tx().ayudaIntro}</p>
-          <button className="btn mini" style={{ marginBottom: 12 }} onClick={onTour}>{tx().tourGuiado}</button>
+          {!verVideo ? (
+            <button className="btn mini" style={{ marginBottom: 12 }} onClick={() => setVerVideo(true)}>{tx().tourGuiado}</button>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              <video controls autoPlay playsInline poster={`/poster-${getLang()}.jpg`}
+                style={{ width: "100%", borderRadius: 12, border: "2px solid var(--tinta)", background: "#000", display: "block" }}>
+                <source src={`/tutorial-${getLang()}.mp4`} type="video/mp4" />
+              </video>
+              <a className="btn mini secundario mt-10" style={{ textDecoration: "none", textAlign: "center", display: "block" }}
+                href={`/tutorial-${getLang()}.mp4`} download>{tx().descargarVideo}</a>
+            </div>
+          )}
           {temas.map((x) => (
             <button key={x.id} className="fila" style={{ width: "100%", textAlign: "left", background: "none",
               border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "11px 0" }}
@@ -1518,14 +1491,9 @@ export default function App() {
   const [abrirOferta, setAbrirOferta] = useState(null);
   const [stats, setStats] = useState(null);
   const [verAyuda, setVerAyuda] = useState(false);
-  const [tourPaso, setTourPaso] = useState(null);
   const [tourVisto, setTourVisto] = useState(() => {
     try { return localStorage.getItem("ts_tour") === "1"; } catch { return true; }
   });
-  const cerrarTour = () => {
-    setTourPaso(null); setTourVisto(true);
-    try { localStorage.setItem("ts_tour", "1"); } catch { /* nada */ }
-  };
   const [oscuro, setOscuro] = useState(() => {
     try {
       const g = localStorage.getItem("ts_tema");
@@ -1599,16 +1567,13 @@ export default function App() {
     const set = new Set(vistas); nuevos.forEach((a) => set.add(a.key)); guardarVistas(set);
   }, [avisos.map((a) => a.key).join("|")]);
 
-  // El tour es interactivo: al avanzar, la app se sitúa en la pantalla que explica
-  useEffect(() => {
-    if (tourPaso === null) return;
-    const destino = guia(getLang()).tour[tourPaso]?.tab;
-    if (destino) { setTab(destino); setVerInfractores(false); setVerFicha(null); }
-  }, [tourPaso]);
-
   // Primera vez con sesión iniciada: se ofrece el tour solo
   useEffect(() => {
-    if (me && !tourVisto && phase === "listo" && tourPaso === null) setTourPaso(0);
+    if (me && !tourVisto && phase === "listo") {
+      setVerAyuda(true);
+      setTourVisto(true);
+      try { localStorage.setItem("ts_tour", "1"); } catch { /* nada */ }
+    }
   }, [me, phase]);
 
   const nMatches = api.snap?.matches?.length || 0;
@@ -1659,10 +1624,7 @@ export default function App() {
 
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
-        {verAyuda && (
-          <Ayuda onCerrar={() => setVerAyuda(false)}
-            onTour={() => { setVerAyuda(false); setTourPaso(0); }} />
-        )}
+        {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} />}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
             onAbrirTrade={(id) => { setTab("trades"); setVerInfractores(false); setAbrirTrade(id); }}
@@ -1718,10 +1680,6 @@ export default function App() {
           <Staff me={me} refresh={refresh} />
         )}
       </main>
-
-      {tourPaso !== null && me && (
-        <Tour paso={tourPaso} setPaso={setTourPaso} onCerrar={cerrarTour} />
-      )}
 
       {me && phase === "listo" && (
         <nav className="tabbar">
