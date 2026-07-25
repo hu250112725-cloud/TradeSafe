@@ -198,7 +198,7 @@ app.get("/api/images/:id", async (req, res) => {
   const img = r.rows[0];
   const uR = await q(`SELECT role FROM users WHERE id=$1`, [viewer.sub]);
   const esStaff = ["moderator", "admin"].includes(uR.rows[0]?.role);
-  let ok = esStaff || img.owner_id === viewer.sub || img.kind === "origin";
+  let ok = esStaff || img.owner_id === viewer.sub || ["origin", "avatar"].includes(img.kind);
   if (!ok && img.trade_id) {
     const t = await q(`SELECT 1 FROM trades WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [img.trade_id, viewer.sub]);
     ok = t.rowCount > 0;
@@ -275,7 +275,7 @@ app.get("/api/state", authAny, async (req, res) => {
          AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
       (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n,
       (SELECT max(t.created_at) FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS last_trade,
-      u.showcase, u.bio,
+      u.showcase, u.bio, u.avatar_id, u.favorite,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.friend_code = u.friend_code AND u.friend_code IS NOT NULL) AS dup_friend,
       (SELECT count(*)::int FROM users x WHERE x.status <> 'deleted' AND x.id <> u.id AND x.signup_fp = u.signup_fp AND u.signup_fp IS NOT NULL) AS dup_fp
     FROM users u WHERE u.status <> 'deleted'`);
@@ -344,13 +344,15 @@ app.get("/api/state", authAny, async (req, res) => {
     : { rows: [] };
 
   const cuerpo = {
-    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code, emailVerified: me.email_verified !== false },
+    me: { id: me.id, displayName: me.display_name, trainerName: me.trainer_name, role: me.role, status: me.status, verified: me.verified, createdAt: me.created_at, email: me.email, friendCode: me.friend_code, verifCode: me.verif_code, emailVerified: me.email_verified !== false,
+      avatarId: me.avatar_id, favorite: me.favorite, bio: me.bio },
     users: usersR.rows.map((u) => ({
       id: u.id, displayName: u.display_name, trainerName: u.trainer_name, role: u.role, status: u.status,
       verified: u.verified, createdAt: u.created_at,
       trades: u.trades_done, rating: u.rating, sanctions: u.sanctions_n,
       newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
       lastTrade: u.last_trade, showcase: u.showcase || [], bio: u.bio,
+      avatarId: u.avatar_id, favorite: u.favorite,
       rank: u.sanctions_n > 0 ? "marcado"
         : u.trades_done >= 100 ? "oro"
         : u.trades_done >= 25 ? "plata"
@@ -484,7 +486,16 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   const bio = String(req.body?.bio ?? "").trim().slice(0, 300);
   if (hasMoney(bio) || limpia.some((x) => hasMoney(x.species) || hasMoney(x.note || "")))
     return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
-  await q(`UPDATE users SET showcase=$2, bio=$3 WHERE id=$1`, [req.me.id, JSON.stringify(limpia), bio || null]);
+  const fav = String(req.body?.favorite || "").trim().slice(0, 40) || null;
+  if (fav && hasMoney(fav)) return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
+  await q(`UPDATE users SET showcase=$2, bio=$3, favorite=$4 WHERE id=$1`,
+    [req.me.id, JSON.stringify(limpia), bio || null, fav]);
+  if (req.body?.avatar) {
+    try {
+      const id = await saveImage(req.me.id, null, "avatar", req.body.avatar);
+      await q(`UPDATE users SET avatar_id=$2 WHERE id=$1`, [req.me.id, id]);
+    } catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen no válida"); }
+  }
   res.json({ ok: true });
 });
 

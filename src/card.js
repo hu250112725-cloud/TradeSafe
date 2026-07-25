@@ -19,11 +19,11 @@ const TXT = {
   es: { titulo: "TARJETA DE ENTRENADOR", home: "Entrenador en HOME", rango: "Rango",
         trades: "INTERCAMBIOS", val: "VALORACIÓN", desde: "Miembro desde",
         verificado: "CUENTA VERIFICADA", sinVerificar: "SIN VERIFICAR",
-        escanea: "Escanea para ver mi ficha", sinVal: "—" },
+        escanea: "Escanea para ver mi ficha", sinVal: "—", favorito: "POKÉMON FAVORITO" },
   en: { titulo: "TRAINER CARD", home: "HOME trainer", rango: "Rank",
         trades: "TRADES", val: "RATING", desde: "Member since",
         verificado: "VERIFIED ACCOUNT", sinVerificar: "UNVERIFIED",
-        escanea: "Scan to see my profile", sinVal: "—" },
+        escanea: "Scan to see my profile", sinVal: "—", favorito: "FAVOURITE POKÉMON" },
 };
 
 // Rectángulo redondeado con el borde grueso y la sombra dura de la app
@@ -54,6 +54,18 @@ function encaja(ctx, texto, max, base, peso = 900) {
     t -= 4;
   } while (ctx.measureText(texto).width > max && t > 26);
   return t;
+}
+
+// Carga una imagen y espera a que esté lista (null si falla)
+function cargar(src) {
+  return new Promise((ok) => {
+    if (!src) return ok(null);
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => ok(im);
+    im.onerror = () => ok(null);
+    im.src = src;
+  });
 }
 
 export async function dibujarTarjeta(datos, url, lang = "es") {
@@ -103,69 +115,87 @@ export async function dibujarTarjeta(datos, url, lang = "es") {
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(100, 242); ctx.lineTo(W - 100, 242); ctx.stroke();
 
-  // Nombre del entrenador
+  // Avatar circular (si lo hay) y nombre del entrenador
+  const av = await cargar(datos.avatarUrl);
+  const AVX = 100, AVY = 268, AVD = 190;
+  if (av) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(AVX + AVD / 2, AVY + AVD / 2, AVD / 2, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+    const lado = Math.min(av.width, av.height);
+    ctx.drawImage(av, (av.width - lado) / 2, (av.height - lado) / 2, lado, lado, AVX, AVY, AVD, AVD);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(AVX + AVD / 2, AVY + AVD / 2, AVD / 2, 0, Math.PI * 2);
+    ctx.lineWidth = 6; ctx.strokeStyle = C.tinta; ctx.stroke();
+  }
+  const nx = av ? AVX + AVD + 34 : 100;
   ctx.textAlign = "left";
-  const tam = encaja(ctx, datos.trainer, W - 220, 108);
+  encaja(ctx, datos.trainer, W - nx - 110, av ? 84 : 104);
   ctx.fillStyle = C.tinta;
-  ctx.fillText(datos.trainer, 100, 350);
-  fuente(30, 500); ctx.fillStyle = C.suave;
-  ctx.fillText(`${T.home}: ${datos.homeName}`, 100, 398);
+  ctx.fillText(datos.trainer, nx, 348);
+  fuente(27, 500); ctx.fillStyle = C.suave;
+  ctx.fillText(`${T.home}: ${datos.homeName}`, nx, 390);
+  if (datos.favorite) {
+    fuente(17, 800); ctx.fillStyle = C.verde;
+    ctx.fillText(T.favorito.split("").join("\u2009"), nx, 428);
+    fuente(29, 800); ctx.fillStyle = C.tinta;
+    ctx.fillText(`★ ${datos.favorite}`, nx, 462);
+  }
 
   // Franja del rango
-  ficha(100, 440, W - 200, 130, 20, ctx, {
+  ficha(100, 486, W - 200, 118, 20, ctx, {
     relleno: marcado ? "#fdeee8" : C.oroP, borde: marcado ? C.lacre : C.oro, sombra: 6,
   });
   fuente(64, 400); ctx.textAlign = "left";
-  ctx.fillText(r.ic, 140, 528);
+  ctx.fillText(r.ic, 140, 570);
   fuente(20, 800); ctx.fillStyle = C.suave;
-  ctx.fillText(T.rango.toUpperCase().split("").join("\u2009"), 232, 490);
+  ctx.fillText(T.rango.toUpperCase().split("").join("\u2009"), 232, 532);
   fuente(48, 900); ctx.fillStyle = C.tinta;
-  ctx.fillText(lang === "en" ? r.en : r.es, 230, 546);
+  ctx.fillText(lang === "en" ? r.en : r.es, 230, 586);
 
   // Dos cajas de estadísticas
   const cajaW = (W - 220) / 2;
-  ficha(100, 606, cajaW, 170, 20, ctx, { sombra: 6 });
-  ficha(120 + cajaW, 606, cajaW, 170, 20, ctx, { sombra: 6 });
+  ficha(100, 628, cajaW, 156, 20, ctx, { sombra: 6 });
+  ficha(120 + cajaW, 628, cajaW, 156, 20, ctx, { sombra: 6 });
   ctx.textAlign = "center";
   fuente(72, 900); ctx.fillStyle = C.tinta;
-  ctx.fillText(String(datos.closedTrades), 100 + cajaW / 2, 700);
-  ctx.fillText(datos.rating ? `★ ${datos.rating}` : T.sinVal, 120 + cajaW + cajaW / 2, 700);
+  ctx.fillText(String(datos.closedTrades), 100 + cajaW / 2, 716);
+  ctx.fillText(datos.rating ? `★ ${datos.rating}` : T.sinVal, 120 + cajaW + cajaW / 2, 716);
   fuente(19, 800); ctx.fillStyle = C.suave;
-  ctx.fillText(T.trades.split("").join("\u2009"), 100 + cajaW / 2, 742);
-  ctx.fillText(T.val.split("").join("\u2009"), 120 + cajaW + cajaW / 2, 742);
+  ctx.fillText(T.trades.split("").join("\u2009"), 100 + cajaW / 2, 756);
+  ctx.fillText(T.val.split("").join("\u2009"), 120 + cajaW + cajaW / 2, 756);
 
   // Verificación y antigüedad
   ctx.textAlign = "left";
   fuente(30, 800);
   ctx.fillStyle = datos.verified ? C.verde : C.suave;
-  ctx.fillText(`${datos.verified ? "✓" : "○"}  ${datos.verified ? T.verificado : T.sinVerificar}`, 100, 838);
+  ctx.fillText(`${datos.verified ? "✓" : "○"}  ${datos.verified ? T.verificado : T.sinVerificar}`, 100, 832);
   fuente(27, 500); ctx.fillStyle = C.suave;
   const desde = new Date(datos.memberSince).toLocaleDateString(lang === "en" ? "en-GB" : "es",
     { month: "long", year: "numeric" });
-  ctx.fillText(`${T.desde} ${desde}`, 100, 886);
+  ctx.fillText(`${T.desde} ${desde}`, 100, 872);
 
   // Código QR
   const qrURL = await QRCode.toDataURL(url, { margin: 1, width: 340, errorCorrectionLevel: "M",
     color: { dark: "#121a16", light: "#ffffff" } });
   const img = new Image();
   await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = qrURL; });
-  ficha(100, 930, 340, 340, 18, ctx, { sombra: 6 });
-  ctx.drawImage(img, 112, 942, 316, 316);
+  ficha(100, 900, 330, 330, 18, ctx, { sombra: 6 });
+  ctx.drawImage(img, 112, 912, 306, 306);
 
   // Texto junto al QR
   fuente(30, 800); ctx.fillStyle = C.tinta;
-  ctx.fillText(T.escanea, 476, 1010);
+  ctx.fillText(T.escanea, 466, 972);
   fuente(26, 700); ctx.fillStyle = C.verde;
   const corta = url.replace(/^https?:\/\//, "");
-  ctx.fillText(corta.length > 30 ? corta.slice(0, 29) + "…" : corta, 476, 1054);
+  ctx.fillText(corta.length > 28 ? corta.slice(0, 27) + "…" : corta, 466, 1012);
 
   // Pie
-  ficha(476, 1090, W - 576, 180, 18, ctx, { relleno: C.cielo, sombra: 6 });
+  ficha(466, 1048, W - 566, 182, 18, ctx, { relleno: C.cielo, sombra: 6 });
   fuente(25, 700); ctx.fillStyle = C.tinta;
   const nota = lang === "en"
     ? ["Every trade sealed with", "a signed contract and", "photo proof from both sides."]
     : ["Cada intercambio sellado", "con contrato firmado y", "pruebas de ambas partes."];
-  nota.forEach((l, i) => ctx.fillText(l, 506, 1140 + i * 40));
+  nota.forEach((l, i) => ctx.fillText(l, 494, 1100 + i * 40));
 
   return cv;
 }

@@ -49,6 +49,10 @@ function Rep({ userId, onFicha }) {
   if (!u) return null;
   return (
     <div className="tags">
+      {u.avatarId && (
+        <img src={api.imageUrl(u.avatarId)} alt="" style={{ width: 26, height: 26, borderRadius: "50%",
+          objectFit: "cover", border: "1.5px solid var(--tinta)" }} />
+      )}
       <b style={{ fontSize: 14, cursor: onFicha ? "pointer" : "default", textDecoration: onFicha ? "underline" : "none", textUnderlineOffset: 3 }}
         onClick={onFicha ? () => onFicha(u.id) : undefined}>{u.displayName}</b>
       {u.rank && u.rank !== "novato" && (
@@ -676,8 +680,17 @@ function FichaUsuario({ userId, onBack }) {
       <h1 className="h1" style={{ margin: "14px 0" }}>{tx().fichaPublica}</h1>
       <div className="ticket">
         <div className="ticket-cuerpo">
-          <div className="h2">{u.displayName}</div>
-          <div className="txt-xs suave">{tx().entrenador} {u.trainerName}</div>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            {u.avatarId && (
+              <img src={api.imageUrl(u.avatarId)} alt="" style={{ width: 68, height: 68, borderRadius: "50%",
+                objectFit: "cover", border: "2px solid var(--tinta)", flexShrink: 0 }} />
+            )}
+            <div>
+              <div className="h2">{u.displayName}</div>
+              <div className="txt-xs suave">{tx().entrenador} {u.trainerName}</div>
+              {u.favorite && <div className="txt-xs" style={{ color: "var(--verde)", fontWeight: 700 }}>★ {u.favorite}</div>}
+            </div>
+          </div>
           <div className="tags mt-10">
             {u.rank && <span className={`tag ${u.rank === "oro" ? "oro" : u.rank === "marcado" ? "lacre" : "tenue"}`}>{tx()[RANGOS[u.rank]]}</span>}
             {u.verified ? <span className="tag verde">{tx().verificado}</span> : <span className="tag tenue">{tx().sinVerificar}</span>}
@@ -1142,6 +1155,9 @@ function Perfil({ me, refresh }) {
   const [vitrina, setVitrina] = useState(u?.showcase || []);
   const [nuevo, setNuevo] = useState({});
   const [guardado, setGuardado] = useState(false);
+  const [fav, setFav] = useState(me.favorite || "");
+  const [avatarPrev, setAvatarPrev] = useState(null);
+  const [avatarNuevo, setAvatarNuevo] = useState(null);
   const [copiado, setCopiado] = useState(false);
   const certUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/cert/${me.id}`;
   const [tarjeta, setTarjeta] = useState(null);
@@ -1155,7 +1171,8 @@ function Perfil({ me, refresh }) {
       const cv = await dibujarTarjeta({
         trainer: me.displayName, homeName: me.trainerName, verified: me.verified,
         memberSince: me.createdAt, closedTrades: u?.trades ?? 0, rating: u?.rating,
-        rank: u?.rank || "novato",
+        rank: u?.rank || "novato", favorite: me.favorite,
+        avatarUrl: me.avatarId ? api.imageUrl(me.avatarId) : null,
       }, certUrl, getLang());
       const b = await aBlob(cv);
       setBlobTarjeta(b);
@@ -1244,7 +1261,22 @@ function Perfil({ me, refresh }) {
         </div>
       )}
       <div className="ficha mt-14">
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().vitrina}</div>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().avatar}</div>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+          <div style={{ width: 74, height: 74, borderRadius: "50%", overflow: "hidden",
+            border: "2px solid var(--tinta)", background: "var(--cielo)", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
+            {avatarPrev || me.avatarId
+              ? <img src={avatarPrev || api.imageUrl(me.avatarId)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : "👤"}
+          </div>
+          <button className="btn mini secundario" onClick={async () => {
+            const img = await pickImage();
+            if (img) { setAvatarPrev(img); setAvatarNuevo(img); }
+          }}>{me.avatarId || avatarPrev ? tx().btnCambiarFoto : tx().btnFoto}</button>
+        </div>
+        <CampoEspecie label={tx().lblFavorito} value={fav} onChange={setFav} placeholder={tx().phEspecie} />
+        <div className="eyebrow" style={{ margin: "16px 0 8px" }}>{tx().vitrina}</div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().vitrinaIntro}</p>
         <Campo label={tx().lblBio}><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} /></Campo>
         {vitrina.map((v, i) => (
@@ -1261,7 +1293,8 @@ function Perfil({ me, refresh }) {
               onClick={() => { setVitrina([...vitrina, nuevo]); setNuevo({}); }}>{tx().addVitrina}</button>
           </div>
         )}
-        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina }); setGuardado(true); setTimeout(() => setGuardado(false), 3000); })}>
+        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina, favorite: fav, avatar: avatarNuevo });
+          setAvatarNuevo(null); setGuardado(true); setTimeout(() => setGuardado(false), 3000); })}>
           {tx().btnGuardarPerfil}
         </button>
         {guardado && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
@@ -1287,24 +1320,11 @@ function Perfil({ me, refresh }) {
               )}
               <a className="btn mini secundario" style={{ textDecoration: "none", textAlign: "center" }}
                 href={tarjeta} download={`tradesafe-${me.displayName}.png`}>{tx().btnDescargarTarjeta}</a>
+              <a className="btn mini secundario" style={{ textDecoration: "none", textAlign: "center" }}
+                href={certUrl + "?lang=" + getLang()} target="_blank" rel="noreferrer">{tx().verCert}</a>
             </>
           )}
         </div>
-      </div>
-
-      <div className="ficha mt-14">
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().certificado}</div>
-        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().certIntro}</p>
-        <p className="txt-xs mono suave" style={{ wordBreak: "break-all", marginBottom: 10 }}>{certUrl}</p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a className="btn mini" style={{ textDecoration: "none", textAlign: "center" }}
-            href={certUrl + "?lang=" + getLang()} target="_blank" rel="noreferrer">{tx().btnVerCert}</a>
-          <button className="btn mini secundario" onClick={async () => {
-            try { await navigator.clipboard.writeText(certUrl); } catch { /* sin permiso */ }
-            setCopiado(true); setTimeout(() => setCopiado(false), 3000);
-          }}>{tx().btnCopiarCert}</button>
-        </div>
-        {copiado && <div className="mt-10"><Aviso tipo="verde">{tx().certCopiado}</Aviso></div>}
       </div>
 
       <div className="ficha mt-14">
