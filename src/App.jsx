@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { fecha, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
 import { SPECIES } from "./species.js";
+import { dibujarTarjeta, aBlob } from "./card.js";
 
 /* ================= Piezas de UI ================= */
 const Sello = ({ code, verde, grande }) => (
@@ -1143,6 +1144,34 @@ function Perfil({ me, refresh }) {
   const [guardado, setGuardado] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const certUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/cert/${me.id}`;
+  const [tarjeta, setTarjeta] = useState(null);
+  const [blobTarjeta, setBlobTarjeta] = useState(null);
+  const [haciendo, setHaciendo] = useState(false);
+  const [errTarjeta, setErrTarjeta] = useState(false);
+
+  const crearTarjeta = async () => {
+    setHaciendo(true);
+    try {
+      const cv = await dibujarTarjeta({
+        trainer: me.displayName, homeName: me.trainerName, verified: me.verified,
+        memberSince: me.createdAt, closedTrades: u?.trades ?? 0, rating: u?.rating,
+        rank: u?.rank || "novato",
+      }, certUrl, getLang());
+      const b = await aBlob(cv);
+      setBlobTarjeta(b);
+      setTarjeta(URL.createObjectURL(b));
+    } catch { setErrTarjeta(true); }
+    setHaciendo(false);
+  };
+
+  const compartirTarjeta = async () => {
+    if (!blobTarjeta) return;
+    const file = new File([blobTarjeta], `tradesafe-${me.displayName}.png`, { type: "image/png" });
+    try {
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text: certUrl });
+      else await navigator.share({ url: certUrl });
+    } catch { /* el usuario canceló */ }
+  };
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().miPerfil}</h1>
@@ -1236,6 +1265,31 @@ function Perfil({ me, refresh }) {
           {tx().btnGuardarPerfil}
         </button>
         {guardado && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().tarjeta}</div>
+        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().tarjetaIntro}</p>
+        {tarjeta && (
+          <img src={tarjeta} alt={tx().tarjeta}
+            style={{ width: "100%", borderRadius: 12, border: "2px solid var(--tinta)", marginBottom: 10, display: "block" }} />
+        )}
+        {errTarjeta && <div style={{ marginBottom: 10 }}><Aviso tipo="lacre">{tx().errorGenerico}</Aviso></div>}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {!tarjeta ? (
+            <button className="btn mini" disabled={haciendo} onClick={() => { setErrTarjeta(false); crearTarjeta(); }}>
+              {haciendo ? tx().generando : tx().btnGenerarTarjeta}
+            </button>
+          ) : (
+            <>
+              {typeof navigator !== "undefined" && navigator.canShare && (
+                <button className="btn mini" onClick={compartirTarjeta}>{tx().btnCompartirTarjeta}</button>
+              )}
+              <a className="btn mini secundario" style={{ textDecoration: "none", textAlign: "center" }}
+                href={tarjeta} download={`tradesafe-${me.displayName}.png`}>{tx().btnDescargarTarjeta}</a>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="ficha mt-14">
