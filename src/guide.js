@@ -1,0 +1,158 @@
+// Contenidos de la ayuda: tour guiado interactivo + temas por sección.
+// Cada paso del tour puede llevar una pestaña asociada: la app se mueve sola
+// hasta esa pantalla mientras se explica, para que se vea sobre lo real.
+
+const es = {
+  tour: [
+    { tab: null, icono: "🛡️", t: "Bienvenido a TradeSafe",
+      d: "Te enseño en un minuto cómo hacer intercambios sin que te estafen. La app no intercambia por ti: coordina, guarda pruebas y arbitra si algo sale mal." },
+    { tab: "mercado", icono: "🏪", t: "El mercado",
+      d: "Aquí ves lo que ofrece la gente. Fíjate siempre en las etiquetas del dueño: si está verificado, cuántos intercambios lleva y su rango 🥉🥈🥇. Las cuentas nuevas salen marcadas en rojo." },
+    { tab: "publicar", icono: "📤", t: "Publicar tu oferta",
+      d: "Solo son obligatorias dos cosas: la especie y qué buscas a cambio. Lo demás es opcional, porque en HOME muchos datos no se ven. Puedes añadir una captura de origen para dar más confianza." },
+    { tab: "deseos", icono: "✨", t: "Tu lista de deseos",
+      d: "Apunta lo que buscas y la app te avisa sola cuando alguien lo publique. Aparece un punto en la pestaña y en la campanita 🔔." },
+    { tab: "trades", icono: "🤝", t: "Cómo va un intercambio",
+      d: "Son 5 pasos: propuesta → contrato firmado por los dos → foto previa con el código → intercambio en HOME → foto final y confirmación. Nadie avanza solo: hacen falta ambas partes." },
+    { tab: "trades", icono: "📷", t: "Las pruebas son la clave",
+      d: "Antes de intercambiar, los dos suben una captura con el código del trade visible. Así nadie puede usar una foto vieja, y si hay problema queda todo como evidencia." },
+    { tab: "comunidad", icono: "🎁", t: "Comunidad",
+      d: "Sorteos con ganadores verificables y un tablón para preguntas rápidas. Recuerda: para intercambiar, siempre el mercado." },
+    { tab: "perfil", icono: "📜", t: "Tu reputación",
+      d: "Verifica tu cuenta de HOME para ganar la insignia ✓, y comparte tu certificado público para demostrar tu historial fuera de la app." },
+    { tab: null, icono: "🚨", t: "Tres reglas de oro",
+      d: "1) Nunca lleves el trato fuera de la app: pierdes toda protección. 2) Nada de dinero real, está prohibido y se sanciona. 3) Si algo huele mal, pide un mediador o abre disputa: tienes 72 h de defensa y derecho a apelar." },
+  ],
+  temas: [
+    { id: "mercado", icono: "🏪", t: "Mercado y ofertas", pasos: [
+      "Usa el buscador por especie o por lo que piden, y el filtro ⭐ Solo shinys.",
+      "Toca una oferta para ver la ficha completa y quién la publica.",
+      "Antes de proponer, mira la reputación: verificado ✓, número de trades, rango y si es cuenta nueva.",
+      "Si algo te parece hackeado o sospechoso, usa ⚑ Reportar oferta: lo revisa el staff.",
+      "Para proponer, escribe qué ofreces tú (uno por línea si son varios Pokémon, hasta 6).",
+    ] },
+    { id: "publicar", icono: "📤", t: "Publicar una oferta", pasos: [
+      "Obligatorio solo: especie y qué buscas a cambio.",
+      "Marca ⭐ si es shiny; el resto de datos están en «Añadir detalles» y son opcionales.",
+      "La captura de origen es opcional pero da mucha confianza: tu oferta luce el sello 📷.",
+      "La app rechaza fichas imposibles (shiny bloqueados, niveles imposibles) para frenar hacks.",
+      "Máximo 20 ofertas activas a la vez.",
+    ] },
+    { id: "trade", icono: "🤝", t: "Hacer un intercambio", pasos: [
+      "Propuesta: describes qué das; la otra parte acepta o rechaza.",
+      "Contrato: ambos firman. Antes de la primera firma podéis editar los términos; después quedan congelados.",
+      "Prueba previa: renombra una caja de HOME con el código del trade (o escríbelo en tu perfil de HOME), haz captura y súbela.",
+      "En curso: se revelan los códigos de amigo. Intercambiad en HOME. Quien tenga menos reputación entrega primero.",
+      "Prueba final: comprueba lo recibido, sube la captura y confirma. Al confirmar los dos, queda sellado.",
+      "Para terminar, valora a la otra persona con estrellas.",
+    ] },
+    { id: "problemas", icono: "⚖️", t: "Si algo sale mal", pasos: [
+      "Primero prueba el chat: está guardado como evidencia.",
+      "🤝 Pide un mediador: alguien neutral entra a ayudar sin sancionar a nadie.",
+      "Si no se resuelve, abre disputa: el acusado tiene 72 h para defenderse.",
+      "Un moderador revisa contrato, capturas y chat, y decide. Puede sancionar o cerrar sin falta.",
+      "Si te sancionan y no estás de acuerdo, puedes apelar en 60 días: lo revisa otro moderador distinto.",
+      "Las sanciones aparecen en la lista pública de infractores, sin datos personales.",
+    ] },
+    { id: "cuenta", icono: "🪪", t: "Cuenta y verificación", pasos: [
+      "Al registrarte pedimos tu clave de amigo de HOME (12 caracteres, la de «Tus datos»).",
+      "Tu clave solo la ve tu contraparte, y únicamente cuando el intercambio está en curso.",
+      "Para verificarte: Perfil → genera un código, escríbelo en tu perfil de HOME y sube la captura.",
+      "Un moderador la revisa y activa tu insignia ✓ Verificado.",
+      "Puedes exportar todos tus datos o eliminar la cuenta cuando quieras.",
+    ] },
+    { id: "comunidad", icono: "🎁", t: "Sorteos y tablón", pasos: [
+      "Para participar en sorteos necesitas cuenta verificada y sin sanciones activas.",
+      "Algunos sorteos piden un mínimo de intercambios cerrados.",
+      "El sorteo publica una semilla: cualquiera puede recalcular el resultado y comprobar que fue limpio.",
+      "El tablón es para preguntas y avisos rápidos, con límite antiflood.",
+      "Para intercambiar de verdad, usa siempre el mercado: es lo único protegido.",
+    ] },
+    { id: "seguridad", icono: "🚨", t: "Seguridad y estafas", pasos: [
+      "Nunca lleves el trato a Discord, WhatsApp o cualquier sitio fuera: es la táctica nº1 de los estafadores y pierdes toda protección.",
+      "Está prohibido el dinero real. La app bloquea esos mensajes y los registra.",
+      "Desconfía de cuentas nuevas sin historial, sobre todo en intercambios valiosos.",
+      "Comprueba siempre que la captura muestre el código de ESTE intercambio.",
+      "Revisa la lista de infractores antes de un trade importante.",
+    ] },
+  ],
+};
+
+const en = {
+  tour: [
+    { tab: null, icono: "🛡️", t: "Welcome to TradeSafe",
+      d: "One minute and you'll know how to trade without getting scammed. The app doesn't trade for you: it coordinates, stores proof and arbitrates if something goes wrong." },
+    { tab: "mercado", icono: "🏪", t: "The market",
+      d: "Here you see what people offer. Always check the owner's tags: verified status, number of trades and rank 🥉🥈🥇. Brand-new accounts are flagged in red." },
+    { tab: "publicar", icono: "📤", t: "Posting your offer",
+      d: "Only two things are required: the species and what you want in return. Everything else is optional, since HOME hides a lot of data. You can add an origin screenshot to build trust." },
+    { tab: "deseos", icono: "✨", t: "Your wishlist",
+      d: "Note what you're after and the app alerts you when someone posts it. A dot appears on the tab and on the bell 🔔." },
+    { tab: "trades", icono: "🤝", t: "How a trade works",
+      d: "Five steps: proposal → contract signed by both → pre-trade screenshot with the code → trade in HOME → final screenshot and confirmation. Nobody advances alone: both sides are needed." },
+    { tab: "trades", icono: "📷", t: "Proof is everything",
+      d: "Before trading, both upload a screenshot showing the trade code. Nobody can reuse an old photo, and if there's trouble it all stands as evidence." },
+    { tab: "comunidad", icono: "🎁", t: "Community",
+      d: "Giveaways with verifiable winners and a board for quick questions. Remember: to trade, always use the market." },
+    { tab: "perfil", icono: "📜", t: "Your reputation",
+      d: "Verify your HOME account to earn the ✓ badge, and share your public certificate to prove your history outside the app." },
+    { tab: null, icono: "🚨", t: "Three golden rules",
+      d: "1) Never take the deal outside the app: you lose all protection. 2) No real money, it's forbidden and sanctioned. 3) If something feels off, request a mediator or open a dispute: 72 h to respond and the right to appeal." },
+  ],
+  temas: [
+    { id: "mercado", icono: "🏪", t: "Market and offers", pasos: [
+      "Use the search by species or by what they want, plus the ⭐ Shinies only filter.",
+      "Tap an offer to see the full card and who posted it.",
+      "Before proposing, check reputation: verified ✓, trade count, rank and whether it's a new account.",
+      "If something looks hacked or suspicious, use ⚑ Report offer: staff will review it.",
+      "To propose, write what you're offering (one per line for multiple Pokémon, up to 6).",
+    ] },
+    { id: "publicar", icono: "📤", t: "Posting an offer", pasos: [
+      "Required only: species and what you want in return.",
+      "Tick ⭐ if it's shiny; everything else lives under «Add details» and is optional.",
+      "The origin screenshot is optional but builds a lot of trust: your offer gets the 📷 seal.",
+      "The app rejects impossible entries (shiny-locked species, impossible levels) to block hacks.",
+      "Maximum 20 active offers at a time.",
+    ] },
+    { id: "trade", icono: "🤝", t: "Making a trade", pasos: [
+      "Proposal: you describe what you give; the other side accepts or declines.",
+      "Contract: both sign. Before the first signature you can edit the terms; after that they're frozen.",
+      "Pre-proof: rename a HOME box with the trade code (or write it on your HOME profile), screenshot it and upload.",
+      "In progress: friend codes are revealed. Trade in HOME. Whoever has less reputation delivers first.",
+      "Final proof: check what you received, upload the screenshot and confirm. Once both confirm, it's sealed.",
+      "Finally, rate the other person with stars.",
+    ] },
+    { id: "problemas", icono: "⚖️", t: "If something goes wrong", pasos: [
+      "Try the chat first: it's stored as evidence.",
+      "🤝 Request a mediator: a neutral person steps in without sanctioning anyone.",
+      "If that fails, open a dispute: the accused gets 72 h to respond.",
+      "A moderator reviews contract, screenshots and chat, then decides. They may sanction or close with no fault.",
+      "If you're sanctioned and disagree, you can appeal within 60 days: a different moderator reviews it.",
+      "Sanctions appear on the public offenders list, with no personal data.",
+    ] },
+    { id: "cuenta", icono: "🪪", t: "Account and verification", pasos: [
+      "On sign-up we ask for your HOME friend code (12 characters, from «Your info»).",
+      "Only your counterparty sees it, and only while the trade is in progress.",
+      "To get verified: Profile → generate a code, write it on your HOME profile and upload the screenshot.",
+      "A moderator reviews it and enables your ✓ Verified badge.",
+      "You can export all your data or delete your account whenever you want.",
+    ] },
+    { id: "comunidad", icono: "🎁", t: "Giveaways and board", pasos: [
+      "To enter giveaways you need a verified account with no active sanctions.",
+      "Some giveaways require a minimum number of closed trades.",
+      "Each draw publishes a seed: anyone can recompute the result and check it was fair.",
+      "The board is for quick questions and notices, with anti-flood limits.",
+      "For actual trading, always use the market: it's the only protected path.",
+    ] },
+    { id: "seguridad", icono: "🚨", t: "Safety and scams", pasos: [
+      "Never move the deal to Discord, WhatsApp or anywhere outside: it's scammers' #1 tactic and you lose all protection.",
+      "Real money is forbidden. The app blocks those messages and logs them.",
+      "Be wary of new accounts with no history, especially on valuable trades.",
+      "Always check the screenshot shows the code of THIS trade.",
+      "Check the offenders list before an important trade.",
+    ] },
+  ],
+};
+
+const guias = { es, en };
+export const guia = (lang) => guias[lang] || guias.es;

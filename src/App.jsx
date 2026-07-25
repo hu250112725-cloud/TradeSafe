@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { fecha, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
 import { SPECIES } from "./species.js";
+import { guia } from "./guide.js";
 
 /* ================= Piezas de UI ================= */
 const Sello = ({ code, verde, grande }) => (
@@ -473,6 +474,82 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           <div className="mt-10"><Rep userId={o.ownerId} /></div>
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ================= Tour guiado ================= */
+function Tour({ paso, setPaso, onCerrar }) {
+  const pasos = guia(getLang()).tour;
+  const p = pasos[paso];
+  if (!p) return null;
+  const ultimo = paso === pasos.length - 1;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column",
+      justifyContent: "flex-end", background: "rgba(0,0,0,.45)", padding: "0 14px 92px" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="ficha" style={{ maxWidth: 432, margin: "0 auto", width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span className="eyebrow">{tx().tourPaso(paso + 1, pasos.length)}</span>
+          <button className="enlace-volver" onClick={onCerrar}>{tx().saltar} ✕</button>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 30, lineHeight: 1 }}>{p.icono}</span>
+          <div>
+            <div className="h2">{p.t}</div>
+            <p className="txt-s suave mt-6">{p.d}</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 5, justifyContent: "center", margin: "14px 0 12px" }}>
+          {pasos.map((_, i) => (
+            <span key={i} style={{ width: i === paso ? 18 : 7, height: 7, borderRadius: 99,
+              background: i === paso ? "var(--verde)" : "var(--tinta-suave)", opacity: i === paso ? 1 : .4, transition: "width .15s" }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {paso > 0 && <button className="btn mini secundario" style={{ flex: 1 }} onClick={() => setPaso(paso - 1)}>{tx().anterior}</button>}
+          <button className="btn mini" style={{ flex: 2 }} onClick={() => (ultimo ? onCerrar() : setPaso(paso + 1))}>
+            {ultimo ? tx().entendido : tx().siguiente}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================= Centro de ayuda ================= */
+function Ayuda({ onTour, onCerrar }) {
+  const [tema, setTema] = useState(null);
+  const temas = guia(getLang()).temas;
+  const t = temas.find((x) => x.id === tema);
+  return (
+    <div className="ficha" style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div className="eyebrow">{tx().ayuda}</div>
+        <button className="enlace-volver" onClick={onCerrar}>✕</button>
+      </div>
+      {!t ? (
+        <>
+          <p className="txt-s suave" style={{ marginBottom: 12 }}>{tx().ayudaIntro}</p>
+          <button className="btn mini" style={{ marginBottom: 12 }} onClick={onTour}>{tx().tourGuiado}</button>
+          {temas.map((x) => (
+            <button key={x.id} className="fila" style={{ width: "100%", textAlign: "left", background: "none",
+              border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "11px 0" }}
+              onClick={() => setTema(x.id)}>
+              <span className="txt-s"><span style={{ marginRight: 8 }}>{x.icono}</span><b>{x.t}</b></span>
+              <span className="suave">›</span>
+            </button>
+          ))}
+        </>
+      ) : (
+        <>
+          <button className="enlace-volver" onClick={() => setTema(null)}>{tx().volverAyuda}</button>
+          <div className="h2 mt-10">{t.icono} {t.t}</div>
+          <ol style={{ margin: "12px 0 0", paddingLeft: 20 }}>
+            {t.pasos.map((p, i) => <li key={i} className="txt-s" style={{ marginBottom: 9 }}>{p}</li>)}
+          </ol>
+        </>
+      )}
     </div>
   );
 }
@@ -1440,6 +1517,15 @@ export default function App() {
   const [verFicha, setVerFicha] = useState(null);
   const [abrirOferta, setAbrirOferta] = useState(null);
   const [stats, setStats] = useState(null);
+  const [verAyuda, setVerAyuda] = useState(false);
+  const [tourPaso, setTourPaso] = useState(null);
+  const [tourVisto, setTourVisto] = useState(() => {
+    try { return localStorage.getItem("ts_tour") === "1"; } catch { return true; }
+  });
+  const cerrarTour = () => {
+    setTourPaso(null); setTourVisto(true);
+    try { localStorage.setItem("ts_tour", "1"); } catch { /* nada */ }
+  };
   const [oscuro, setOscuro] = useState(() => {
     try {
       const g = localStorage.getItem("ts_tema");
@@ -1513,6 +1599,18 @@ export default function App() {
     const set = new Set(vistas); nuevos.forEach((a) => set.add(a.key)); guardarVistas(set);
   }, [avisos.map((a) => a.key).join("|")]);
 
+  // El tour es interactivo: al avanzar, la app se sitúa en la pantalla que explica
+  useEffect(() => {
+    if (tourPaso === null) return;
+    const destino = guia(getLang()).tour[tourPaso]?.tab;
+    if (destino) { setTab(destino); setVerInfractores(false); setVerFicha(null); }
+  }, [tourPaso]);
+
+  // Primera vez con sesión iniciada: se ofrece el tour solo
+  useEffect(() => {
+    if (me && !tourVisto && phase === "listo" && tourPaso === null) setTourPaso(0);
+  }, [me, phase]);
+
   const nMatches = api.snap?.matches?.length || 0;
   const tabs = [["mercado", tx().tabMercado], ["publicar", tx().tabPublicar],
     ["deseos", nMatches > 0 ? `${tx().tabDeseos} ●` : tx().tabDeseos],
@@ -1529,9 +1627,12 @@ export default function App() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="enlace-volver" style={{ fontSize: 17, textDecoration: "none", lineHeight: 1,
+              border: "2px solid var(--tinta)", borderRadius: 999, width: 27, height: 27, fontWeight: 700 }}
+              onClick={() => { setVerAyuda(!verAyuda); setVerNotis(false); }} aria-label={tx().ayuda}>?</button>
             {me && phase === "listo" && (
               <button className="enlace-volver" style={{ fontSize: 20, textDecoration: "none", position: "relative", lineHeight: 1 }}
-                onClick={() => setVerNotis(!verNotis)} aria-label={tx().notiTitulo}>
+                onClick={() => { setVerNotis(!verNotis); setVerAyuda(false); }} aria-label={tx().notiTitulo}>
                 🔔
                 {noLeidas.size > 0 && (
                   <span style={{ position: "absolute", top: -4, right: -6, background: "var(--lacre)", color: "#fff",
@@ -1558,6 +1659,10 @@ export default function App() {
 
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
+        {verAyuda && (
+          <Ayuda onCerrar={() => setVerAyuda(false)}
+            onTour={() => { setVerAyuda(false); setTourPaso(0); }} />
+        )}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
             onAbrirTrade={(id) => { setTab("trades"); setVerInfractores(false); setAbrirTrade(id); }}
@@ -1613,6 +1718,10 @@ export default function App() {
           <Staff me={me} refresh={refresh} />
         )}
       </main>
+
+      {tourPaso !== null && me && (
+        <Tour paso={tourPaso} setPaso={setTourPaso} onCerrar={cerrarTour} />
+      )}
 
       {me && phase === "listo" && (
         <nav className="tabbar">
