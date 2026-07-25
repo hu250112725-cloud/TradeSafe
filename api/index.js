@@ -494,8 +494,15 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   if (disp && hasMoney(disp)) return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
   const fav = String(req.body?.favorite || "").trim().slice(0, 40) || null;
   if (fav && hasMoney(fav)) return err(res, "money_offer_blocked", 422, "No se permiten referencias a dinero real");
-  await q(`UPDATE users SET showcase=$2, bio=$3, favorite=$4, availability=$5 WHERE id=$1`,
-    [req.me.id, JSON.stringify(limpia), bio || null, fav, disp]);
+  // Actualización parcial: solo se tocan los campos que llegan en la petición
+  if ("showcase" in (req.body || {}))
+    await q(`UPDATE users SET showcase=$2 WHERE id=$1`, [req.me.id, JSON.stringify(limpia)]);
+  if ("bio" in (req.body || {}))
+    await q(`UPDATE users SET bio=$2 WHERE id=$1`, [req.me.id, bio || null]);
+  if ("favorite" in (req.body || {}))
+    await q(`UPDATE users SET favorite=$2 WHERE id=$1`, [req.me.id, fav]);
+  if ("availability" in (req.body || {}))
+    await q(`UPDATE users SET availability=$2 WHERE id=$1`, [req.me.id, disp]);
   if (req.body?.avatar) {
     try {
       const id = await saveImage(req.me.id, null, "avatar", req.body.avatar);

@@ -1315,8 +1315,9 @@ function Perfil({ me, refresh }) {
         </div>
       )}
       <div className="ficha mt-14">
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().avatar}</div>
-        <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+        <div className="eyebrow" style={{ marginBottom: 12 }}>{tx().misDatos}</div>
+
+        <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 18 }}>
           <div style={{ width: 74, height: 74, borderRadius: "50%", overflow: "hidden",
             border: "2px solid var(--tinta)", background: "var(--cielo)", flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
@@ -1329,37 +1330,59 @@ function Perfil({ me, refresh }) {
             if (img) { setAvatarPrev(img); setAvatarNuevo(img); }
           }}>{me.avatarId || avatarPrev ? tx().btnCambiarFoto : tx().btnFoto}</button>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
           <div style={{ flex: 1 }}>
             <CampoEspecie label={tx().lblFavorito} value={fav} onChange={setFav} placeholder={tx().phEspecie} />
           </div>
           <div style={{ marginBottom: 12 }}><Sprite nombre={fav} tam={58} /></div>
         </div>
-        <div className="eyebrow" style={{ margin: "16px 0 8px" }}>{tx().vitrina}</div>
-        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().vitrinaIntro}</p>
-        <Campo label={tx().lblBio}><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} /></Campo>
+
+        <Campo label={tx().lblBio}>
+          <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder={tx().phBio} maxLength={300} />
+        </Campo>
         <Campo label={tx().lblDisponibilidad}>
           <input value={disp} onChange={(e) => setDisp(e.target.value)} placeholder={tx().phDisponibilidad} maxLength={120} />
         </Campo>
+
+        <button className="btn mt-10" disabled={busy} onClick={() => run(async () => {
+          await api.saveProfile({ bio, favorite: fav, availability: disp, avatar: avatarNuevo });
+          setAvatarNuevo(null); setGuardado("datos"); setTimeout(() => setGuardado(false), 3000);
+        })}>{tx().btnGuardarDatos}</button>
+        {guardado === "datos" && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
+      </div>
+
+      <div className="ficha mt-14">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div className="eyebrow">{tx().vitrina}</div>
+          <span className="txt-xs suave">{tx().vitrinaCuenta(vitrina.length)}</span>
+        </div>
+        <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().vitrinaIntro}</p>
+
         {vitrina.map((v, i) => (
-          <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "8px 0" }}>
-            <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}{v.note ? <span className="suave"> — {v.note}</span> : null}</span>
+          <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "10px 0", alignItems: "center" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Sprite nombre={v.species} tam={34} />
+              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
+            </span>
             <button className="enlace-volver" onClick={() => setVitrina(vitrina.filter((_, j) => j !== i))}>{tx().quitar}</button>
           </div>
         ))}
+
         {vitrina.length < 6 && (
-          <div className="mt-10">
+          <div style={{ borderTop: "1px solid #d8ded9", paddingTop: 14, marginTop: 10 }}>
             <CampoEspecie label={tx().lblEspecie} value={nuevo.species} onChange={(v) => setNuevo({ ...nuevo, species: v })} placeholder={tx().phEspecie} />
             <label className="check"><input type="checkbox" checked={!!nuevo.isShiny} onChange={(e) => setNuevo({ ...nuevo, isShiny: e.target.checked })} /> {tx().esShiny}</label>
             <button className="btn mini secundario" disabled={!nuevo.species}
               onClick={() => { setVitrina([...vitrina, nuevo]); setNuevo({}); }}>{tx().addVitrina}</button>
           </div>
         )}
-        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => { await api.saveProfile({ bio, showcase: vitrina, favorite: fav, availability: disp, avatar: avatarNuevo });
-          setAvatarNuevo(null); setGuardado(true); setTimeout(() => setGuardado(false), 3000); })}>
-          {tx().btnGuardarPerfil}
-        </button>
-        {guardado && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
+
+        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => {
+          await api.saveProfile({ showcase: vitrina });
+          setGuardado("vitrina"); setTimeout(() => setGuardado(false), 3000);
+        })}>{tx().btnGuardarVitrina}</button>
+        {guardado === "vitrina" && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
       </div>
 
       <div className="ficha mt-14">
