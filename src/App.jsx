@@ -1654,6 +1654,7 @@ function Staff({ me, refresh }) {
   const [decideId, setDecideId] = useState(null);
   const [resumen, setResumen] = useState("");
   const [nivel, setNivel] = useState("minor");
+  const [emitido, setEmitido] = useState(null);
   const { run, busy, err } = useRun(refresh);
   const esAdmin = me.role === "admin";
   const pendVerif = api.snap.users.filter((u) => !u.verified && u.status === "active");
@@ -1665,7 +1666,7 @@ function Staff({ me, refresh }) {
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().panelStaff}</h1>
       <div className="tags" style={{ marginBottom: 14 }}>
-        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ["reportes", tx().tReportes(reportes.length)], ...(esAdmin ? [["usuarios", tx().tUsuarios], ["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
+        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ["reportes", tx().tReportes(reportes.length)], ["usuarios", tx().tUsuarios], ...(esAdmin ? [["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
           <button key={id} className={`btn mini ${pane === id ? "" : "secundario"}`} onClick={() => setPane(id)}>{l}</button>
         ))}
       </div>
@@ -1773,8 +1774,12 @@ function Staff({ me, refresh }) {
           </div>
         )))}
 
-      {pane === "usuarios" && esAdmin && (
-        <div className="ficha" style={{ overflowX: "auto" }}>
+      {pane === "usuarios" && (
+        <div className="ficha">
+          <div style={{ marginBottom: 12 }}>
+            <Aviso tipo="oro">{tx().codigoEmitido.replace(":", ".")} {tx().soloVerificados}.</Aviso>
+          </div>
+          <div style={{ overflowX: "auto" }}>
           <table className="tabla">
             <thead><tr><th>{tx().thUsuario}</th><th>{tx().thRol}</th><th>{tx().thEstado}</th><th></th></tr></thead>
             <tbody>
@@ -1782,24 +1787,40 @@ function Staff({ me, refresh }) {
                 <tr key={u.id}>
                   <td><b>{u.displayName}</b>{(u.dupFriend || u.dupFp) && <span className="tag lacre" style={{ marginLeft: 6 }}>⚠</span>}<br /><span className="suave">{u.trainerName}</span></td>
                   <td>
-                    <select className="select-mini" value={u.role} disabled={u.id === me.id || busy}
-                      onChange={(e) => run(() => api.setRole(u.id, e.target.value))}>
-                      {["user", "mediator", "moderator", "admin"].map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    {esAdmin ? (
+                      <select className="select-mini" value={u.role} disabled={u.id === me.id || busy}
+                        onChange={(e) => run(() => api.setRole(u.id, e.target.value))}>
+                        {["user", "mediator", "moderator", "admin"].map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    ) : u.role}
                   </td>
                   <td>{u.status}</td>
                   <td>
-                    {u.id !== me.id && (
-                      <button className="btn mini secundario" disabled={busy}
-                        onClick={() => run(() => api.setStatus(u.id, u.status === "suspended" ? "active" : "suspended"))}>
-                        {u.status === "suspended" ? tx().btnReactivar : tx().btnSuspender}
-                      </button>
-                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                      {esAdmin && u.id !== me.id && (
+                        <button className="btn mini secundario" disabled={busy}
+                          onClick={() => run(() => api.setStatus(u.id, u.status === "suspended" ? "active" : "suspended"))}>
+                          {u.status === "suspended" ? tx().btnReactivar : tx().btnSuspender}
+                        </button>
+                      )}
+                      {u.verified ? (
+                        <button className="btn mini secundario" disabled={busy}
+                          onClick={() => run(async () => setEmitido({ id: u.id, code: await api.staffRecovery(u.id) }))}>
+                          {tx().emitirCodigo}
+                        </button>
+                      ) : <span className="txt-xs suave">{tx().soloVerificados}</span>}
+                      {emitido?.id === u.id && (
+                        <span className="mono txt-xs" style={{ color: "var(--verde)", fontWeight: 700, wordBreak: "break-all" }}>
+                          {emitido.code}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

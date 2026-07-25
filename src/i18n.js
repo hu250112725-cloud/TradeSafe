@@ -105,6 +105,8 @@ const es = {
   btnRecuperar: "Restablecer contraseña", volverEntrar: "← Volver a entrar",
   miCodigoRec: "Mi código de recuperación",
   regenerarCodigo: "Ver / regenerar código", lblTuPass: "Confirma tu contraseña actual",
+  emitirCodigo: "🔑 Emitir código", codigoEmitido: "Código emitido — pásaselo solo a esa persona:",
+  soloVerificados: "Solo cuentas con HOME verificado",
   sinCodigoAviso: "Si pierdes el código y olvidas la contraseña, no podremos devolverte la cuenta.",
   // Mercado
   ordenar: "Ordenar", ordenReciente: "Recientes", ordenReputacion: "Mejor reputación",
@@ -388,6 +390,8 @@ const en = {
   btnRecuperar: "Reset password", volverEntrar: "← Back to sign in",
   miCodigoRec: "My recovery code",
   regenerarCodigo: "View / regenerate code", lblTuPass: "Confirm your current password",
+  emitirCodigo: "🔑 Issue code", codigoEmitido: "Code issued — give it only to that person:",
+  soloVerificados: "Only HOME-verified accounts",
   sinCodigoAviso: "If you lose the code and forget your password, we won't be able to give the account back.",
   ordenar: "Sort", ordenReciente: "Newest", ordenReputacion: "Best reputation",
   verMas: "Show more offers", nuevo: "New",
