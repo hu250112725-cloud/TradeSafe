@@ -331,7 +331,16 @@ async function limpiarImagenes() {
              AND NOT EXISTS (SELECT 1 FROM offers o WHERE (o.data->>'originImage') = i.id::text)`);
 }
 
+// Red de seguridad: si por lo que sea quedó una oferta activa con su
+// intercambio ya cerrado, se retira igualmente.
+async function retirarOfertasCerradas() {
+  await q(`UPDATE offers o SET status='traded'
+           WHERE o.status='active'
+             AND EXISTS (SELECT 1 FROM trades t WHERE t.offer_id = o.id AND t.state='closed')`);
+}
+
 async function expireStale() {
+  await retirarOfertasCerradas();
   await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
            WHERE state IN ('proposal','contract','pre_proof')
            AND (events->-1->>'at')::timestamptz < now() - interval '7 days'`);
