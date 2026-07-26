@@ -375,10 +375,13 @@ app.get("/api/state", authAny, async (req, res) => {
   // Incluye también las ofertas de mis intercambios aunque ya no estén activas,
   // para que el historial no muestre huecos.
   const offersR = await q(
-    `SELECT * FROM offers
-     WHERE status='active' OR owner_id=$1
-        OR id IN (SELECT offer_id FROM trades WHERE a_id=$1 OR b_id=$1 OR mediator_id=$1)
-     ORDER BY created_at DESC LIMIT 300`, [me.id]);
+    `SELECT o.*,
+       EXISTS (SELECT 1 FROM trades t WHERE t.offer_id = o.id
+               AND t.state NOT IN ('closed','cancelled')) AS in_trade
+     FROM offers o
+     WHERE o.status='active' OR o.owner_id=$1
+        OR o.id IN (SELECT offer_id FROM trades WHERE a_id=$1 OR b_id=$1 OR mediator_id=$1)
+     ORDER BY o.created_at DESC LIMIT 300`, [me.id]);
 
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const tradesR = esStaff
@@ -457,7 +460,7 @@ app.get("/api/state", authAny, async (req, res) => {
         : u.trades_done >= 5 ? "bronce" : "novato",
       ...(esStaff ? { verifCode: u.verif_code, verifImage: u.verif_image, dupFriend: u.dup_friend > 0, dupFp: u.dup_fp > 0 } : {}),
     })),
-    offers: offersR.rows.map((o) => ({ id: o.id, ownerId: o.owner_id, status: o.status, createdAt: o.created_at, ...o.data })),
+    offers: offersR.rows.map((o) => ({ id: o.id, ownerId: o.owner_id, status: o.status, inTrade: o.in_trade, createdAt: o.created_at, ...o.data })),
     trades: tradesR.rows.map((t) => ({
       id: t.id, code: t.code, offerId: t.offer_id, aId: t.a_id, bId: t.b_id, aGive: t.a_give,
       aItems: t.a_items || [], bItems: t.b_items || [], mediatorId: t.mediator_id,
@@ -744,7 +747,7 @@ app.post("/api/trades", auth, needsEmail, async (req, res) => {
   if (!lista.length) return err(res, "validation_error", 422, "Describe qué ofreces tú");
   if (lista.some(hasMoney)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
   const o = await q(`SELECT * FROM offers WHERE id=$1 AND status='active'`, [offerId]);
-  if (!o.rowCount) return err(res, "not_found", 404, "Oferta no disponible");
+  if (!o.rowCount) return err(res, "not_found", 404, "Esta oferta ya no está disponible");
   if (o.rows[0].owner_id === req.me.id) return err(res, "conflict", 409, "No puedes proponerte a ti mismo");
   const r = await q(
     `INSERT INTO trades (code, offer_id, a_id, b_id, a_give, a_items, events)
@@ -824,7 +827,27 @@ app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
       const p = soyA ? { confirmedA: true } : { confirmedB: true };
       const both = (soyA ? f.confirmedB : f.confirmedA) === true;
       await setTrade(t, p, both ? "closed" : "post_proof", me, both ? "closed" : "confirmed");
-      if (both) await notify([t.a_id, t.b_id], "closed", t.code); break;
+      if (both) {
+        // La oferta ya se intercambió: fuera del mercado
+        if (t.offer_id) {
+          await q(`UPDATE offers SET status='traded' WHERE id=$1 AND status='active'`, [t.offer_id]);
+          // Y se cancelan las propuestas que otros dejaron sobre esa misma oferta
+          const otras = await q(
+            `SELECT id, a_id FROM trades WHERE offer_id=$1 AND id <> $2 AND state='proposal'`, [t.offer_id, t.id]);
+          for (const o of otras.rows) {
+            // El motivo va en el propio intercambio: así se ve aunque el chat
+            // de los cancelados ya no viaje en el estado.
+            await q(`UPDATE trades SET state='cancelled',
+                       flags = flags || '{"cancelReason":"offer_traded"}'::jsonb,
+                       events = events || jsonb_build_array(jsonb_build_object(
+                         'at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                         'by', null, 'to', 'cancelled'))
+                     WHERE id=$1`, [o.id]);
+          }
+        }
+        await notify([t.a_id, t.b_id], "closed", t.code);
+      }
+      break;
     }
     case "rate": {
       if (t.state !== "closed") return invalid();

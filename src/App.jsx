@@ -511,6 +511,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
               <span className="h1">{o.species}</span>
               {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
               {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
+              {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
             </div>
             {[o.nature, o.ability, o.ball, o.origin && `${tx().origen} ${o.origin}`].filter(Boolean).length > 0 && (
               <div className="txt-xs suave mt-6">
@@ -633,6 +634,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
                 {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
                 {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
                 {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
+                {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
               </div>
               <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {tx().busca} {o.wants}
@@ -1042,6 +1044,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
       </div>
       {["proposal", "contract", "pre_proof"].includes(t.state) && (
         <p className="txt-xs suave mt-6">{tx().avisoCaducidad}</p>
+      )}
+      {t.state === "cancelled" && t.cancelReason === "offer_traded" && (
+        <div className="mt-14"><Aviso tipo="oro">{tx().canceladoPorTrato}</Aviso></div>
       )}
       {err && <div className="mt-14"><Aviso tipo="lacre">{err}</Aviso></div>}
 
