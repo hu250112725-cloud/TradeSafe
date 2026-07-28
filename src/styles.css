@@ -442,3 +442,18 @@ body.oscuro .dia-sep { background: var(--cielo); }
   width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
   box-shadow: 0 0 0 2px rgba(34,197,94,.25); display: inline-block; flex-shrink: 0;
 }
+
+/* ===== Barra inferior de 3 secciones, con icono ===== */
+.tab { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; min-width: 0; padding: 7px 4px; }
+.tab-ic { font-size: 17px; line-height: 1; }
+.tab-tx { font-size: 10px; }
+.tabbar-inner { overflow: visible; }
+
+/* Avatar de la cabecera que lleva al perfil */
+.avatar-cab {
+  width: 30px; height: 30px; border-radius: 50%; overflow: hidden; padding: 0;
+  border: 2px solid var(--tinta); background: var(--cielo); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-family: "Unbounded", system-ui, sans-serif; font-weight: 800; font-size: 13px; color: var(--tinta);
+}
+.avatar-cab img { width: 100%; height: 100%; object-fit: cover; }

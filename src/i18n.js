@@ -20,6 +20,12 @@ const es = {
   enVercel: "en Vercel.",
   // Pestañas
   tabMercado: "Mercado", tabPublicar: "Publicar", tabTrades: "Trades", tabPerfil: "Perfil", tabStaff: "Staff",
+  tabInicio: "Inicio", tabInventario: "Inventario", tabBuzon: "Buzón",
+  invPublicadas: "Publicadas", invIntercambiadas: "Intercambiadas", invVitrina: "Vitrina",
+  invVacio: "Todavía no has publicado nada.", invSinTrades: "Aún no has intercambiado nada.",
+  irAlPerfil: "Mi perfil", panelStaffBtn: "🛡️ Panel de staff",
+  retirar: "Retirar", publicada: "Publicada",
+
   // Estados del intercambio
   st_proposal: "Propuesta", st_contract: "Contrato", st_pre_proof: "Prueba previa", st_in_progress: "En curso",
   st_post_proof: "Prueba final", st_closed: "Cerrado", st_disputed: "En disputa", st_cancelled: "Cancelado",
@@ -317,6 +323,12 @@ const en = {
   sinConexion2: "If you just deployed, check the variables",
   enVercel: "in Vercel.",
   tabMercado: "Market", tabPublicar: "Post", tabTrades: "Trades", tabPerfil: "Profile", tabStaff: "Staff",
+  tabInicio: "Home", tabInventario: "Inventory", tabBuzon: "Inbox",
+  invPublicadas: "Listed", invIntercambiadas: "Traded", invVitrina: "Showcase",
+  invVacio: "You haven't listed anything yet.", invSinTrades: "You haven't traded anything yet.",
+  irAlPerfil: "My profile", panelStaffBtn: "🛡️ Staff panel",
+  retirar: "Withdraw", publicada: "Listed",
+
   st_proposal: "Proposal", st_contract: "Contract", st_pre_proof: "Pre-proof", st_in_progress: "In progress",
   st_post_proof: "Final proof", st_closed: "Closed", st_disputed: "Disputed", st_cancelled: "Cancelled",
   verificado: "✓ Verified", sinVerificar: "Unverified", trades: "trades", sancion: "sanction", cuentaNueva: "New account",

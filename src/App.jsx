@@ -528,10 +528,11 @@ function CartaOferta({ o, me, onAbrir }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar }) {
   const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
+  useEffect(() => { if (irAPublicar) setVista("publicar"); }, [irAPublicar]);
   const [give, setGive] = useState("");
   const [busca, setBusca] = useState("");
   const [soloShiny, setSoloShiny] = useState(false);
@@ -648,7 +649,8 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h1 className="h1">{vista === "publicar" ? tx().publicarOferta : vista === "deseos" ? tx().deseosTitulo : tx().mercado}</h1>
+        <h1 className="h1">{vista === "publicar" ? tx().publicarOferta : vista === "deseos" ? tx().deseosTitulo
+              : vista === "comunidad" ? tx().tabComunidad : tx().mercado}</h1>
         <button className={`btn mini ${vista === "publicar" ? "secundario" : ""}`}
           onClick={() => setVista(vista === "publicar" ? "ofertas" : "publicar")}>
           {vista === "publicar" ? tx().btnCancelar : tx().nuevaOferta}
@@ -659,13 +661,18 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
         <button className={`btn mini ${vista === "deseos" ? "" : "secundario"}`} onClick={() => setVista("deseos")}>
           {tx().tabDeseos}{(api.snap.matches?.length || 0) > 0 ? " ●" : ""}
         </button>
-        <button className="btn mini secundario" onClick={onOffenders}>{tx().infractoresBtn}</button>
+        <button className={`btn mini ${vista === "comunidad" ? "" : "secundario"}`} onClick={() => setVista("comunidad")}>
+          {tx().tabComunidad}
+        </button>
       </div>
 
       {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} />}
       {vista === "deseos" && (
         <Deseos me={me} refresh={refresh}
           onAbrirOferta={(id) => { setVista("ofertas"); setOpen(id); }} />
+      )}
+      {vista === "comunidad" && (
+        <Comunidad me={me} refresh={refresh} esStaff={esStaff} onFicha={onFicha} onOffenders={onOffenders} />
       )}
       {vista === "ofertas" && (<>
       {todas.length <= 3 && !busca && (
@@ -746,7 +753,7 @@ function Ayuda({ onCerrar }) {
 }
 
 /* ================= Comunidad: sorteos y tablón ================= */
-function Comunidad({ me, refresh, esStaff, onFicha }) {
+function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
   const [sub, setSub] = useState("sorteos");
   const [msg, setMsg] = useState("");
   const [crear, setCrear] = useState(false);
@@ -757,11 +764,11 @@ function Comunidad({ me, refresh, esStaff, onFicha }) {
 
   return (
     <div>
-      <h1 className="h1" style={{ marginBottom: 14 }}>{tx().tabComunidad}</h1>
       <div className="tags" style={{ marginBottom: 14 }}>
         {[["sorteos", tx().sorteos], ["tablon", tx().tablon]].map(([id, l]) => (
           <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`} onClick={() => setSub(id)}>{l}</button>
         ))}
+        <button className="btn mini secundario" onClick={onOffenders}>{tx().infractoresBtn}</button>
       </div>
       {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
@@ -857,6 +864,81 @@ function Comunidad({ me, refresh, esStaff, onFicha }) {
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+/* ================= Inventario: lo mío ================= */
+function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
+  const [sub, setSub] = useState("publicadas");
+  const { run, busy, err } = useRun(refresh);
+  const mias = api.snap.offers.filter((o) => o.ownerId === me.id);
+  const activas = mias.filter((o) => o.status === "active");
+  const cerradas = mias.filter((o) => o.status === "traded");
+  const u = userById(me.id);
+  const vitrina = u?.showcase || [];
+
+  const lista = sub === "publicadas" ? activas : sub === "intercambiadas" ? cerradas : [];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h1 className="h1">{tx().tabInventario}</h1>
+        <button className="btn mini" onClick={onPublicar}>{tx().nuevaOferta}</button>
+      </div>
+      <div className="tags" style={{ marginBottom: 14 }}>
+        {[["publicadas", `${tx().invPublicadas} (${activas.length})`],
+          ["intercambiadas", `${tx().invIntercambiadas} (${cerradas.length})`],
+          ["vitrina", `${tx().invVitrina} (${vitrina.length})`]].map(([id, l]) => (
+          <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`} onClick={() => setSub(id)}>{l}</button>
+        ))}
+      </div>
+      {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
+
+      {sub === "vitrina" ? (
+        vitrina.length === 0
+          ? <Vacio icono="🏆">{tx().vitrinaVacia}</Vacio>
+          : <div className="ficha">
+              {vitrina.map((v, i) => (
+                <div key={i} className="fila" style={{ borderTop: i ? "1px solid #d8ded9" : "none", padding: "10px 0" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <Sprite nombre={v.species} tam={40} shiny={v.isShiny} />
+                    <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
+                  </span>
+                  {v.note && <span className="txt-xs suave">{v.note}</span>}
+                </div>
+              ))}
+            </div>
+      ) : lista.length === 0 ? (
+        <Vacio icono={sub === "publicadas" ? "📦" : "🤝"}>{sub === "publicadas" ? tx().invVacio : tx().invSinTrades}</Vacio>
+      ) : lista.map((o) => (
+        <div key={o.id} className="ficha" style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <Sprite nombre={o.species} tam={52} shiny={o.isShiny} halo />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <b className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</b>
+              <div className="txt-xs suave" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {tx().busca} {o.wants}
+              </div>
+              <div className="tags mt-6">
+                {o.status === "traded"
+                  ? <span className="tag verde">{tx().yaIntercambiado}</span>
+                  : o.inTrade
+                    ? <span className="tag oro">{tx().enTrato}</span>
+                    : <span className="tag tenue">{tx().publicada}</span>}
+                {o.originImage && <span className="tag verde">📷</span>}
+              </div>
+            </div>
+          </div>
+          {o.status === "active" && (
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              <button className="btn mini secundario" onClick={() => onAbrirOferta(o.id)}>{tx().verOfertas}</button>
+              <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }}
+                disabled={busy} onClick={() => run(() => api.removeOffer(o.id))}>{tx().retirar}</button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1461,7 +1543,7 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
 }
 
 /* ================= Perfil ================= */
-function Perfil({ me, refresh }) {
+function Perfil({ me, refresh, onStaff }) {
   const u = userById(me.id);
   const { run, busy } = useRun(refresh);
   const exportar = () => run(async () => {
@@ -1718,6 +1800,9 @@ function Perfil({ me, refresh }) {
           <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy} onClick={borrar}>{tx().btnEliminar}</button>
         </div>
       </div>
+      {["moderator", "admin"].includes(me.role) && onStaff && (
+        <button className="btn secundario mt-14" onClick={onStaff}>{tx().panelStaffBtn}</button>
+      )}
       <button className="btn secundario mt-14" onClick={() => { api.logout(); refresh(); }}>{tx().btnSalir}</button>
     </div>
   );
@@ -1938,6 +2023,7 @@ export default function App() {
   const [abrirTrade, setAbrirTrade] = useState(null);
   const [verFicha, setVerFicha] = useState(null);
   const [abrirOferta, setAbrirOferta] = useState(null);
+  const [irAPublicar, setIrAPublicar] = useState(null);
   const [stats, setStats] = useState(null);
   const [verAyuda, setVerAyuda] = useState(false);
   const [codigoNuevo, setCodigoNuevo] = useState(null);
@@ -2032,11 +2118,9 @@ export default function App() {
 
   const nMatches = api.snap?.matches?.length || 0;
   const tabs = [
-    ["mercado", nMatches > 0 ? `${tx().tabMercado} ●` : tx().tabMercado],
-    ["trades", pendientes > 0 ? `${tx().tabTrades} ●` : tx().tabTrades],
-    ["comunidad", tx().tabComunidad],
-    ["perfil", tx().tabPerfil],
-    ...(esStaff ? [["staff", tx().tabStaff]] : [])];
+    ["mercado", "🏠", nMatches > 0 ? `${tx().tabInicio} ●` : tx().tabInicio],
+    ["inventario", "📦", tx().tabInventario],
+    ["trades", "💬", pendientes > 0 ? `${tx().tabBuzon} ●` : tx().tabBuzon]];
 
   return (
     <div className="frame">
@@ -2060,6 +2144,14 @@ export default function App() {
                     {noLeidas.size}
                   </span>
                 )}
+              </button>
+            )}
+            {me && phase === "listo" && (
+              <button className="avatar-cab" aria-label={tx().irAlPerfil}
+                onClick={() => { setTab("perfil"); setVerInfractores(false); setVerFicha(null); }}>
+                {me.avatarId
+                  ? <img src={api.imageUrl(me.avatarId)} alt="" />
+                  : <span>{me.displayName.slice(0, 1).toUpperCase()}</span>}
               </button>
             )}
             <Sello code="BETA" verde />
@@ -2117,20 +2209,23 @@ export default function App() {
             )}
           </>
         ) : me.status === "suspended" ? (
-          <Perfil me={me} refresh={refresh} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} />
         ) : verFicha ? (
           <FichaUsuario userId={verFicha} onBack={() => setVerFicha(null)} />
         ) : verInfractores ? (
           <Infractores onBack={() => setVerInfractores(false)} />
         ) : tab === "mercado" ? (
           <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
-            abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
-        ) : tab === "comunidad" ? (
-          <Comunidad me={me} refresh={refresh} esStaff={esStaff} onFicha={setVerFicha} />
+            abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} esStaff={esStaff}
+            irAPublicar={irAPublicar} />
+        ) : tab === "inventario" ? (
+          <Inventario me={me} refresh={refresh}
+            onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }}
+            onPublicar={() => { setTab("mercado"); setIrAPublicar(Date.now()); }} />
         ) : tab === "trades" ? (
           <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)} />
         ) : tab === "perfil" ? (
-          <Perfil me={me} refresh={refresh} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} />
         ) : (
           <Staff me={me} refresh={refresh} />
         )}
@@ -2139,10 +2234,11 @@ export default function App() {
       {me && phase === "listo" && (
         <nav className="tabbar">
           <div className="tabbar-inner">
-            {tabs.map(([id, label]) => (
+            {tabs.map(([id, icono, label]) => (
               <button key={id} className={`tab ${tab === id && !verInfractores && !verFicha ? "activa" : ""}`}
                 onClick={() => { setTab(id); setVerInfractores(false); setVerFicha(null); }}>
-                {label}
+                <span className="tab-ic">{icono}</span>
+                <span className="tab-tx">{label}</span>
               </button>
             ))}
           </div>
