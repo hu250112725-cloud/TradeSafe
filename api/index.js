@@ -815,7 +815,7 @@ app.post("/api/trades/:id/items", auth, needsEmail, async (req, res) => {
   if (soyA) await q(`UPDATE trades SET a_items=$2, a_give=$3 WHERE id=$1`, [tr.id, JSON.stringify(lista), lista.join(" + ")]);
   else await q(`UPDATE trades SET b_items=$2 WHERE id=$1`, [tr.id, JSON.stringify(lista)]);
   await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
-    [tr.id, "✏️ Los términos del contrato se han modificado. Revísalos antes de firmar."]);
+    [tr.id, "✎ Los términos del contrato se han modificado. Revísalos antes de firmar."]);
   res.json({ ok: true });
 });
 
@@ -914,7 +914,7 @@ app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   if (!texto) return err(res, "validation_error", 422, "Mensaje vacío");
   if (hasMoney(texto)) {
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'lacre',$2)`,
-      [t.id, "🚫 Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
+      [t.id, "⊘ Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
     return res.json({ ok: true, blocked: true });
   }
   if (hasOffsite(texto) && !req.body?.confirmOffsite)
@@ -988,7 +988,7 @@ app.post("/api/dm/:id/message", auth, needsEmail, async (req, res) => {
 
   if (hasMoney(texto)) {
     await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'lacre',$2)`,
-      [t.rows[0].id, "🚫 Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
+      [t.rows[0].id, "⊘ Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
     await audit(req.me.id, "dm.money_blocked", t.rows[0].id, texto.slice(0, 200));
     return res.json({ ok: true, blocked: true });
   }
@@ -1036,7 +1036,7 @@ app.post("/api/trades/:id/mediation", auth, needsEmail, async (req, res) => {
   if (t.flags.mediationRequested) return err(res, "conflict", 409, "Ya se pidió mediación en este intercambio");
   await setTrade(t, { mediationRequested: true, mediationBy: req.me.id }, null, req.me.id, null);
   await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
-    [t.id, "🤝 Se ha solicitado la ayuda de un mediador. Esperen a que alguien tome el caso."]);
+    [t.id, "◈ Se ha solicitado la ayuda de un mediador. Esperen a que alguien tome el caso."]);
   res.status(201).json({ ok: true });
 });
 
@@ -1049,7 +1049,7 @@ app.post("/api/trades/:id/mediation/take", auth, async (req, res) => {
   if (t.a_id === req.me.id || t.b_id === req.me.id) return err(res, "forbidden", 403, "No puedes mediar un intercambio del que eres parte");
   await q(`UPDATE trades SET mediator_id=$2 WHERE id=$1`, [t.id, req.me.id]);
   await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'verde',$2)`,
-    [t.id, `🤝 ${req.me.display_name} ha tomado la mediación de este intercambio.`]);
+    [t.id, `◈ ${req.me.display_name} ha tomado la mediación de este intercambio.`]);
   await audit(req.me.id, "mediation.taken", t.id, "Mediación asumida");
   await notify([t.a_id, t.b_id], "accepted", t.code);
   res.json({ ok: true });
@@ -1063,7 +1063,7 @@ app.post("/api/trades/:id/mediation/close", auth, async (req, res) => {
   await q(`UPDATE trades SET mediator_id=NULL WHERE id=$1`, [t.id]);
   await setTrade(t, { mediationRequested: false, mediationBy: null }, null, req.me.id, null);
   await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'verde',$2)`,
-    [t.id, "🤝 Mediación cerrada." + (nota ? " " + nota : "")]);
+    [t.id, "◈ Mediación cerrada." + (nota ? " " + nota : "")]);
   await audit(req.me.id, "mediation.closed", t.id, nota || "Sin nota");
   res.json({ ok: true });
 });

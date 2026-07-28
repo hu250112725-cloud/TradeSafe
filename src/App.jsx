@@ -493,7 +493,7 @@ function Publicar({ refresh, done }) {
                   <button key={String(sh)} className={`opcion-shiny ${!!f.shiny === sh ? "elegida" : ""}`}
                     onClick={() => setF({ ...f, shiny: sh })}>
                     <Sprite nombre={f.species} tam={62} shiny={sh} />
-                    <span className="txt-xs">{sh ? `✨ ${tx().shinyOpc}` : tx().normalOpc}</span>
+                    <span className="txt-xs">{sh ? `✦ ${tx().shinyOpc}` : tx().normalOpc}</span>
                   </button>
                 ))}
               </div>
@@ -594,7 +594,7 @@ function CartaOferta({ o, me, onAbrir }) {
         <div className="lado">
           <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
           <div className="lado-txt">
-            <b className="nombre-pk">{o.species}{o.isShiny ? " ⭐" : ""}</b>
+            <b className="nombre-pk">{o.species}{o.isShiny ? " ★" : ""}</b>
             {detalles && <span className="txt-xs suave">{detalles}</span>}
             {o.level && <span className="txt-xs suave">{tx().nv} {o.level}</span>}
           </div>
@@ -602,7 +602,7 @@ function CartaOferta({ o, me, onAbrir }) {
         <span className="flecha">⇄</span>
         <div className="lado derecha">
           <div className="lado-txt der">
-            <b className="nombre-pk">{buscado || tx().cualquierCosa}{buscado && buscadoShiny ? " ⭐" : ""}</b>
+            <b className="nombre-pk">{buscado || tx().cualquierCosa}{buscado && buscadoShiny ? " ★" : ""}</b>
             {buscado && <span className="txt-xs suave">{o.wants.length > 34 ? o.wants.slice(0, 33) + "…" : o.wants}</span>}
           </div>
           {buscado
@@ -619,7 +619,7 @@ function CartaOferta({ o, me, onAbrir }) {
           {dueno?.verified && <span className="txt-xs" style={{ color: "var(--verde)" }}>✓</span>}
           {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
           {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
-          {o.originImage && <span className="tag verde">📷</span>}
+          {o.originImage && <span className="tag verde">◎</span>}
         </span>
         <span className="txt-xs suave">{haceRato(o.createdAt)}</span>
       </div>
@@ -676,7 +676,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
             <div style={{ minWidth: 0 }}>
               <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{o.species}</div>
-              {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
+              {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
               {o.inTrade && <span className="tag oro mt-6" style={{ display: "inline-block" }}>{tx().enTrato}</span>}
             </div>
           </div>
@@ -734,7 +734,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
                 {b ? <Sprite nombre={b} tam={62} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 62, height: 62, fontSize: 24 }}>?</span>}
                 <div style={{ minWidth: 0 }}>
                   <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{b || tx().cualquierCosa}</div>
-                  {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
+                  {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
                 </div>
               </div>
             );
@@ -748,7 +748,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           <Rep userId={o.ownerId} onFicha={onFicha} />
           <div className="tags mt-6"><Presencia lastSeen={userById(o.ownerId)?.lastSeen} /></div>
           {userById(o.ownerId)?.availability && (
-            <p className="txt-xs suave mt-6">🕒 {userById(o.ownerId).availability}</p>
+            <p className="txt-xs suave mt-6">◷ {userById(o.ownerId).availability}</p>
           )}
           {sanctionsOf(o.ownerId).map((s) => (
             <div className="mt-10" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
@@ -871,7 +871,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         </>
       )}
       {offers.length === 0 ? (
-        <Vacio icono="📦">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
+        <Vacio icono="▣">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
       ) : offers.map((o) => (
         <CartaOferta key={o.id} o={o} me={me} onAbrir={() => setOpen(o.id)} />
       ))}
@@ -944,10 +944,10 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
               <button className="btn secundario" onClick={() => setCrear(false)}>{tx().btnCancelar}</button>
             </div>
           ) : (
-            <button className="btn mini secundario" style={{ marginBottom: 14 }} onClick={() => setCrear(true)}>➕ {tx().crearSorteo}</button>
+            <button className="btn mini secundario" style={{ marginBottom: 14 }} onClick={() => setCrear(true)}>+ {tx().crearSorteo}</button>
           ))}
 
-          {sorteos.length === 0 ? <Vacio icono="🎁">{tx().sinSorteos}</Vacio> : sorteos.map((g) => (
+          {sorteos.length === 0 ? <Vacio icono="◆">{tx().sinSorteos}</Vacio> : sorteos.map((g) => (
             <div key={g.id} className="ticket" style={{ marginBottom: 14 }}>
               <div className="ticket-cuerpo">
                 <div className="tags">
@@ -959,7 +959,7 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                 <div className="eyebrow" style={{ margin: "12px 0 6px" }}>{tx().premios}</div>
                 {g.prizes.map((p, i) => (
                   <div key={i} className="fila" style={{ padding: "3px 0" }}>
-                    <span className="txt-s">{["🥇","🥈","🥉","🎖️"][i] || "🎁"} {p}</span>
+                    <span className="txt-s">{["🥇","🥈","🥉","◆"][i] || "◆"} {p}</span>
                     {g.winners?.[i] && <b className="txt-s" style={{ color: "var(--verde)" }}>{g.winners[i].name}</b>}
                   </div>
                 ))}
@@ -1003,7 +1003,7 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
             <button className="btn mini mt-10" disabled={busy || msg.trim().length < 3}
               onClick={() => run(async () => { await api.postBoard(msg.trim()); setMsg(""); })}>{tx().btnPublicarTablon}</button>
           </div>
-          {tablon.length === 0 ? <Vacio icono="📌">{tx().sinTablon}</Vacio> : tablon.map((b) => (
+          {tablon.length === 0 ? <Vacio icono="▤">{tx().sinTablon}</Vacio> : tablon.map((b) => (
             <div key={b.id} className="ficha" style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                 <button className="enlace-volver" style={{ fontWeight: 700 }} onClick={() => onFicha(b.byId)}>{b.byName}</button>
@@ -1090,7 +1090,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
               <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
                 {!mia && (inicio && otro?.avatarId
                   ? <img className="msg-avatar" src={api.imageUrl(otro.avatarId)} alt="" />
-                  : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "👤" : ""}</span>)}
+                  : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "◍" : ""}</span>)}
                 <div className={`burbuja ${mia ? "mia" : "suya"}`}>
                   {m.text}
                   <span className="hora-msg">{hora(m.at)}</span>
@@ -1178,27 +1178,27 @@ function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
 
       {sub === "vitrina" ? (
         vitrina.length === 0
-          ? <Vacio icono="🏆">{tx().vitrinaVacia}</Vacio>
+          ? <Vacio icono="★">{tx().vitrinaVacia}</Vacio>
           : <div className="rejilla-inv">
               {vitrina.map((v, i) => (
                 <div key={i} className="casilla-inv" style={{ cursor: "default" }}>
-                  {v.isShiny && <span className="insignia-inv izq">✨</span>}
+                  {v.isShiny && <span className="insignia-inv izq">✦</span>}
                   <Sprite nombre={v.species} tam={54} shiny={v.isShiny} />
                   <span className="nom">{v.species}</span>
                 </div>
               ))}
             </div>
       ) : lista.length === 0 ? (
-        <Vacio icono={sub === "publicadas" ? "📦" : "🤝"}>{sub === "publicadas" ? tx().invVacio : tx().invSinTrades}</Vacio>
+        <Vacio icono={sub === "publicadas" ? "▣" : "◈"}>{sub === "publicadas" ? tx().invVacio : tx().invSinTrades}</Vacio>
       ) : (
         <>
           <div className="rejilla-inv">
             {lista.map((o) => (
               <button key={o.id} className="casilla-inv" onClick={() => setDetalle(detalle === o.id ? null : o.id)}>
-                {o.isShiny && <span className="insignia-inv izq">✨</span>}
+                {o.isShiny && <span className="insignia-inv izq">✦</span>}
                 {o.status === "traded" ? <span className="insignia-inv">✓</span>
-                  : o.inTrade ? <span className="insignia-inv">🤝</span>
-                  : <span className="insignia-inv">🏷️</span>}
+                  : o.inTrade ? <span className="insignia-inv">◈</span>
+                  : <span className="insignia-inv">▭</span>}
                 <Sprite nombre={o.species} tam={54} shiny={o.isShiny} />
                 <span className="nom">{o.species}</span>
               </button>
@@ -1212,7 +1212,7 @@ function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                   <Sprite nombre={o.species} tam={54} shiny={o.isShiny} halo />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <b className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</b>
+                    <b className="txt-s">{o.species}{o.isShiny ? " ★" : ""}</b>
                     <div className="txt-xs suave">{tx().busca} {o.wants}</div>
                   </div>
                 </div>
@@ -1252,7 +1252,7 @@ function Deseos({ me, refresh, onAbrirOferta }) {
               onClick={() => onAbrirOferta(m.offerId)}>
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Sprite nombre={m.species} tam={32} shiny={m.isShiny} />
-                <span className="txt-s"><b>{m.species}</b>{m.isShiny ? " ⭐" : ""} — {userById(m.ownerId)?.displayName ?? "—"}</span>
+                <span className="txt-s"><b>{m.species}</b>{m.isShiny ? " ★" : ""} — {userById(m.ownerId)?.displayName ?? "—"}</span>
               </span>
               <span className="txt-xs suave">{fecha(m.at)}</span>
             </button>
@@ -1271,14 +1271,14 @@ function Deseos({ me, refresh, onAbrirOferta }) {
       </div>
 
       {lista.length === 0 ? (
-        <div className="mt-14"><Vacio icono="✨">{tx().sinDeseos}</Vacio></div>
+        <div className="mt-14"><Vacio icono="✦">{tx().sinDeseos}</Vacio></div>
       ) : (
         <div className="ficha mt-14">
           {lista.map((w) => (
             <div key={w.id} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "9px 0" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <Sprite nombre={w.species} tam={34} shiny={w.shinyOnly} />
-                <span className="txt-s"><b>{w.species}</b>{w.shinyOnly ? " ⭐" : ""}{w.note ? <span className="suave"> — {w.note}</span> : null}</span>
+                <span className="txt-s"><b>{w.species}</b>{w.shinyOnly ? " ★" : ""}{w.note ? <span className="suave"> — {w.note}</span> : null}</span>
               </span>
               <button className="enlace-volver" disabled={busy} onClick={() => run(() => api.delWish(w.id))}>{tx().quitar}</button>
             </div>
@@ -1325,7 +1325,7 @@ function FichaUsuario({ userId, onBack, onEscribir, miId }) {
             {u.newAccount && <span className={`tag ${u.trades > 0 ? "tenue" : "oro"}`}>{u.trades > 0 ? tx().nuevo : tx().cuentaNueva}</span>}
           </div>
           <div className="tags mt-10"><Presencia lastSeen={u.lastSeen} /></div>
-          {u.availability && <p className="txt-xs suave mt-6">🕒 {u.availability}</p>}
+          {u.availability && <p className="txt-xs suave mt-6">◷ {u.availability}</p>}
           <div className="txt-xs suave mt-10">{tx().miembroDesde} {fecha(u.createdAt)}</div>
           <div className="txt-xs suave">{u.lastTrade ? `${tx().ultimoTrade} ${fecha(u.lastTrade)}` : tx().sinTradesAun}</div>
           {u.bio && <p className="txt-s mt-10">{u.bio}</p>}
@@ -1336,7 +1336,7 @@ function FichaUsuario({ userId, onBack, onEscribir, miId }) {
           <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().vitrina}</div>
           {u.showcase.map((v, i) => (
             <div key={i} className="fila" style={{ padding: "5px 0" }}>
-              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
+              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ★" : ""}</span>
               {v.note && <span className="txt-xs suave">{v.note}</span>}
             </div>
           ))}
@@ -1352,7 +1352,7 @@ function FichaUsuario({ userId, onBack, onEscribir, miId }) {
         <div className="ficha mt-14">
           <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().mercado}</div>
           {ofertas.map((o) => (
-            <div key={o.id} className="fila"><span className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</span><span className="txt-xs suave">{o.wants?.slice(0, 30)}</span></div>
+            <div key={o.id} className="fila"><span className="txt-s">{o.species}{o.isShiny ? " ★" : ""}</span><span className="txt-xs suave">{o.wants?.slice(0, 30)}</span></div>
           ))}
         </div>
       )}
@@ -1376,7 +1376,7 @@ function Infractores({ onBack }) {
       </div>
       <input className="buscador" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx().phBuscarNombre} />
       {shown.length === 0 ? (
-        <Vacio icono="✅">{tx().sinInfractores(q)}</Vacio>
+        <Vacio icono="✓">{tx().sinInfractores(q)}</Vacio>
       ) : shown.map((s) => {
         const u = userById(s.userId);
         return (
@@ -1444,7 +1444,7 @@ function BarraAccion({ t, me, soyA, act, act2, busy, offer }) {
           </button>
         ) };
   } else if (t.state === "closed") {
-    contenido = { txt: T.cerrado + " 🎉", mio: false, cerrado: true };
+    contenido = { txt: T.cerrado + " ✦", mio: false, cerrado: true };
   }
   if (!contenido) return null;
 
@@ -1502,7 +1502,7 @@ function ClaveChip({ clave }) {
       try { await navigator.clipboard.writeText(clave); } catch { /* sin permiso */ }
       setCopiada(true); setTimeout(() => setCopiada(false), 2000);
     }}>
-      <span className="mono">🔑 {clave}</span>
+      <span className="mono">⚿ {clave}</span>
       <span className="txt-xs">{copiada ? tx().claveCopiada : tx().copiarClave}</span>
     </button>
   );
@@ -1593,7 +1593,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
 
         <div className="chat-mensajes" ref={cajaChat}>
           {t.messages.length === 0 && (
-            <div className="chat-vacio txt-s"><span className="ic">💬</span>{tx().chatVacio}</div>
+            <div className="chat-vacio txt-s"><span className="ic">✉</span>{tx().chatVacio}</div>
           )}
           {t.messages.map((m, i) => {
             const previo = t.messages[i - 1];
@@ -1618,7 +1618,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
                 <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
                   {!mia && (inicio && autor?.avatarId
                     ? <img className="msg-avatar" src={api.imageUrl(autor.avatarId)} alt="" />
-                    : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "👤" : ""}</span>)}
+                    : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "◍" : ""}</span>)}
                   <div className={`burbuja ${mia ? "mia" : "suya"}`}>
                     {m.text}
                     <span className="hora-msg">{hora(m.at)}</span>
@@ -1683,7 +1683,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
           <div>
             <div className="eyebrow">{soyA ? tx().recibes : tx().tuEntregas}</div>
             {offer && <div style={{ margin: "4px 0 2px" }}><Sprite nombre={offer.species} tam={56} shiny={offer.isShiny} halo /></div>}
-            <div className="h2">{offer ? `${offer.species}${offer.isShiny ? " ⭐" : ""}` : "—"}</div>
+            <div className="h2">{offer ? `${offer.species}${offer.isShiny ? " ★" : ""}` : "—"}</div>
             <div className="txt-xs suave">{offer ? [offer.level && `${tx().nv} ${offer.level}`, offer.nature].filter(Boolean).join(" · ") : ""}</div>
             {t.bItems?.map((it, i) => <p key={i} className="txt-s mt-6">• {it}</p>)}
           </div>
@@ -1701,11 +1701,11 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         <div className="tags mt-6"><Presencia lastSeen={otro?.lastSeen} /></div>
         {otro?.timezone && horaEn(otro.timezone) && (
           <p className="txt-xs suave mt-6">
-            🕒 {tx().suHora}: <b>{horaEn(otro.timezone)}</b>
+            ◷ {tx().suHora}: <b>{horaEn(otro.timezone)}</b>
             <span className="suave"> · {tx().tuHora}: {hora(new Date().toISOString())}</span>
           </p>
         )}
-        {otro?.availability && <p className="txt-xs suave mt-6">📅 {otro.availability}</p>}
+        {otro?.availability && <p className="txt-xs suave mt-6">▦ {otro.availability}</p>}
       </div>
       {["proposal", "contract", "pre_proof"].includes(t.state) && (
         <p className="txt-xs suave mt-6">{tx().avisoCaducidad}</p>
@@ -1818,7 +1818,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
         <div className="mt-14">
           <div className="ticket">
             <div className="ticket-cuerpo centrado">
-              <div style={{ fontSize: 36 }}>🎉</div>
+              <div style={{ fontSize: 36 }}>✦</div>
               <div className="h1 mt-6" style={{ color: "var(--verde)" }}>{tx().cerrado}</div>
               <div className="mt-10"><Sello code={t.code} verde grande /></div>
             </div>
@@ -1829,7 +1829,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
               <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().valoraA(otro?.displayName)}</div>
               <div className="estrellas">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} className={n <= rated ? "on" : ""} onClick={() => setRated(n)} aria-label={`${n} estrellas`}>⭐</button>
+                  <button key={n} className={n <= rated ? "on" : ""} onClick={() => setRated(n)} aria-label={`${n} estrellas`}>★</button>
                 ))}
               </div>
               <button className="btn mini" disabled={!rated || busy} style={{ margin: "12px auto 0", display: "block" }}
@@ -1876,7 +1876,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             <div className="eyebrow" style={{ padding: "10px 14px 0" }}>{tx().chatTitulo}</div>
             <div className="chat-caja" ref={cajaChat}>
               {t.messages.length === 0 && (
-                <div className="chat-vacio txt-s"><span className="ic">💬</span>{tx().chatVacio}</div>
+                <div className="chat-vacio txt-s"><span className="ic">✉</span>{tx().chatVacio}</div>
               )}
               {t.messages.map((m, i) => {
                 const previo = t.messages[i - 1];
@@ -1903,7 +1903,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
                     <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
                       {!mia && (inicio && autor?.avatarId
                         ? <img className="msg-avatar" src={api.imageUrl(autor.avatarId)} alt="" />
-                        : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "👤" : ""}</span>)}
+                        : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "◍" : ""}</span>)}
                       <div className={`burbuja ${mia ? "mia" : "suya"}`}>
                         {m.text}
                         <span className="hora-msg">{hora(m.at)}</span>
@@ -2030,7 +2030,7 @@ function MisTrades({ me, refresh, abrir, onAbierto, onAbrirDM }) {
 
       {seccion === "dm" && (
         (api.snap.dm || []).length === 0
-          ? <Vacio icono="💬">{tx().sinMensajes}</Vacio>
+          ? <Vacio icono="✉">{tx().sinMensajes}</Vacio>
           : (api.snap.dm || []).map((d) => {
               const u = userById(d.otherId);
               const ultimo = [...d.messages].reverse().find((m) => !m.system);
@@ -2086,8 +2086,8 @@ function MisTrades({ me, refresh, abrir, onAbierto, onAbrirDM }) {
       </div>
       {mine.length === 0 ? (
         todos.length === 0
-          ? <Vacio icono="🤝">{tx().sinTrades1}<br />{tx().sinTrades2} <b>{tx().tabMercado}</b> {tx().sinTrades3}</Vacio>
-          : <Vacio icono={verHistorial ? "📜" : "✅"}>{verHistorial ? tx().sinHistorial : tx().sinActivos}</Vacio>
+          ? <Vacio icono="◈">{tx().sinTrades1}<br />{tx().sinTrades2} <b>{tx().tabMercado}</b> {tx().sinTrades3}</Vacio>
+          : <Vacio icono={verHistorial ? "▤" : "✓"}>{verHistorial ? tx().sinHistorial : tx().sinActivos}</Vacio>
       ) : mine.map((t) => {
         const otro = userById(t.aId === me.id ? t.bId : t.aId);
         const offer = api.snap.offers.find((o) => o.id === t.offerId);
@@ -2100,7 +2100,7 @@ function MisTrades({ me, refresh, abrir, onAbierto, onAbrirDM }) {
               <Sello code={t.code} />
               <span className={`tag ${t.state === "closed" ? "verde" : ["disputed", "cancelled"].includes(t.state) ? "lacre" : "tenue"}`}>{stateLabel(t.state)}</span>
               {pend && <span className="tag lacre">{tx().teToca}</span>}
-              {sinLeer(t, me.id) > 0 && <span className="tag lacre">💬 {tx().nuevosMensajes(sinLeer(t, me.id))}</span>}
+              {sinLeer(t, me.id) > 0 && <span className="tag lacre">✉ {tx().nuevosMensajes(sinLeer(t, me.id))}</span>}
             </div>
             <div className="mt-10" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {offer && <Sprite nombre={offer.species} tam={38} shiny={offer.isShiny} />}
@@ -2252,7 +2252,7 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
             {avatarPrev || me.avatarId
               ? <img src={avatarPrev || api.imageUrl(me.avatarId)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : "👤"}
+              : "◍"}
           </div>
           <button className="btn mini secundario" onClick={async () => {
             const img = await pickImage();
@@ -2292,7 +2292,7 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
           <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "10px 0", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Sprite nombre={v.species} tam={34} />
-              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
+              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ★" : ""}</span>
             </span>
             <button className="enlace-volver" onClick={() => setVitrina(vitrina.filter((_, j) => j !== i))}>{tx().quitar}</button>
           </div>
@@ -2345,7 +2345,7 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
         <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ajustes}</div>
         <div className="fila" style={{ padding: "10px 0", borderBottom: "1px solid var(--linea)" }}>
           <span className="txt-s">{oscuro ? tx().modoOscuro : tx().modoClaro}</span>
-          <button className="btn mini secundario" onClick={() => setOscuro(!oscuro)}>{oscuro ? "☀️" : "🌙"}</button>
+          <button className="btn mini secundario" onClick={() => setOscuro(!oscuro)}>{oscuro ? "○" : "●"}</button>
         </div>
         <div className="fila" style={{ padding: "10px 0" }}>
           <span className="txt-s">{tx().idioma}</span>
@@ -2419,7 +2419,7 @@ function Staff({ me, refresh }) {
       </div>
       {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
-      {pane === "disputas" && (abiertas.length === 0 ? <Vacio icono="⚖️">{tx().sinDisputas}</Vacio> :
+      {pane === "disputas" && (abiertas.length === 0 ? <Vacio icono="⚖">{tx().sinDisputas}</Vacio> :
         abiertas.map((d) => {
           const rep = userById(d.reporterId);
           const acc = userById(d.accusedId);
@@ -2465,7 +2465,7 @@ function Staff({ me, refresh }) {
           );
         }))}
 
-      {pane === "verif" && (pendVerif.length === 0 ? <Vacio icono="🪪">{tx().sinVerifs}</Vacio> :
+      {pane === "verif" && (pendVerif.length === 0 ? <Vacio icono="▭">{tx().sinVerifs}</Vacio> :
         pendVerif.map((u) => (
           <div key={u.id} className="ficha" style={{ marginBottom: 14 }}>
             <div className="tags"><b>{u.displayName}</b><span className="tag tenue">{tx().entrenador} {u.trainerName}</span><span className="tag tenue">{tx().alta} {fecha(u.createdAt)}</span>{(u.dupFriend || u.dupFp) && <span className="tag lacre">{tx().posibleMulti}</span>}</div>
@@ -2486,7 +2486,7 @@ function Staff({ me, refresh }) {
           </div>
         )))}
 
-      {pane === "apela" && (apelaciones.length === 0 ? <Vacio icono="🕊️">{tx().sinApelaciones}</Vacio> :
+      {pane === "apela" && (apelaciones.length === 0 ? <Vacio icono="◈">{tx().sinApelaciones}</Vacio> :
         apelaciones.map((s) => {
           const u = userById(s.userId);
           const yoDecidi = s.disputeDecidedBy === me.id;
@@ -2521,7 +2521,7 @@ function Staff({ me, refresh }) {
           </div>
         )))}
 
-      {pane === "chats" && (chatsReportados.length === 0 ? <Vacio icono="💬">{tx().sinReportesChat}</Vacio> :
+      {pane === "chats" && (chatsReportados.length === 0 ? <Vacio icono="✉">{tx().sinReportesChat}</Vacio> :
         chatsReportados.map((r) => (
           <div key={r.id} className="ficha" style={{ marginBottom: 12 }}>
             <div className="tags">
@@ -2597,7 +2597,7 @@ function Staff({ me, refresh }) {
         </div>
       )}
 
-      {pane === "audit" && esAdmin && (api.snap.audit.length === 0 ? <Vacio icono="📜">{tx().sinAudit}</Vacio> : (
+      {pane === "audit" && esAdmin && (api.snap.audit.length === 0 ? <Vacio icono="▤">{tx().sinAudit}</Vacio> : (
         <div className="ficha txt-xs" style={{ maxHeight: 340, overflowY: "auto" }}>
           {api.snap.audit.map((a) => (
             <div key={a.id} style={{ padding: "7px 0", borderBottom: "1px solid #d8ded9" }}>
@@ -2733,7 +2733,7 @@ export default function App() {
             {me && phase === "listo" && (
               <button className="enlace-volver" style={{ fontSize: 20, textDecoration: "none", position: "relative", lineHeight: 1 }}
                 onClick={() => { setVerNotis(!verNotis); setVerAyuda(false); }} aria-label={tx().notiTitulo}>
-                🔔
+                ◔
                 {noLeidas.size > 0 && (
                   <span style={{ position: "absolute", top: -4, right: -6, background: "var(--lacre)", color: "#fff",
                     borderRadius: 999, fontSize: 10, fontWeight: 700, padding: "1px 5px", border: "1.5px solid var(--tinta)" }}>
@@ -2774,7 +2774,7 @@ export default function App() {
         {phase === "cargando" ? (
           <Vacio icono="◈">{tx().conectando}</Vacio>
         ) : phase === "sin-conexion" ? (
-          <Vacio icono="📡">{tx().sinConexion1}<br />{tx().sinConexion2} <b className="mono">DATABASE_URL</b> · <b className="mono">JWT_SECRET</b> {tx().enVercel}</Vacio>
+          <Vacio icono="⚠">{tx().sinConexion1}<br />{tx().sinConexion2} <b className="mono">DATABASE_URL</b> · <b className="mono">JWT_SECRET</b> {tx().enVercel}</Vacio>
         ) : codigoNuevo ? (
           <div style={{ paddingTop: 12 }}>
             <CodigoRecuperacion code={codigoNuevo} onListo={() => { setCodigoNuevo(null); refresh(); }} />

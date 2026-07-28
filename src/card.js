@@ -9,9 +9,9 @@ const C = {
 };
 
 const RANGOS = {
-  oro: { es: "Oro", en: "Gold", ic: "🥇" },
-  plata: { es: "Plata", en: "Silver", ic: "🥈" },
-  bronce: { es: "Bronce", en: "Bronze", ic: "🥉" },
+  oro: { es: "Oro", en: "Gold", ic: "◆" },
+  plata: { es: "Plata", en: "Silver", ic: "◆" },
+  bronce: { es: "Bronce", en: "Bronze", ic: "◆" },
   novato: { es: "Novato", en: "Rookie", ic: "◈" },
   marcado: { es: "Marcado", en: "Flagged", ic: "⚑" },
 };

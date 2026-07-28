@@ -798,3 +798,12 @@ body.oscuro .barra-accion.activa, body.oscuro .barra-accion.hecho { background: 
 }
 .opcion-shiny.elegida { border-color: var(--verde); background: #e8f5ee; }
 body.oscuro .opcion-shiny.elegida { background: rgba(52,194,122,.12); }
+
+/* Los símbolos tipográficos se alinean mejor con un pelín de ajuste óptico */
+.tag, .btn, .rapida, .barra-accion-txt, .eyebrow { font-variant-emoji: text; }
+.insignia-inv { font-size: 11px; color: var(--tinta-suave); }
+.vacio .icono { font-size: 34px; color: var(--tinta-suave); opacity: .55; }
+.chat-vacio .ic { color: var(--tinta-suave); opacity: .55; }
+.punto-online, .tab-punto { line-height: 0; }
+/* El punto verde de "en línea" cuando va como texto */
+.tag.verde, .tag.oro, .tag.lacre { font-variant-numeric: tabular-nums; }
