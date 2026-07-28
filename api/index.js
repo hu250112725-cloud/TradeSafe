@@ -340,6 +340,13 @@ async function retirarOfertasCerradas() {
   await q(`UPDATE offers o SET status='traded'
            WHERE o.status='active'
              AND EXISTS (SELECT 1 FROM trades t WHERE t.offer_id = o.id AND t.state='closed')`);
+  // El inventario sigue el estado de su oferta
+  await q(`UPDATE pokemon p SET status='traded'
+           WHERE p.status <> 'traded'
+             AND EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id AND o.status='traded')`);
+  await q(`UPDATE pokemon p SET status='owned', offer_id=NULL
+           WHERE p.status='listed'
+             AND NOT EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id AND o.status='active')`);
 }
 
 async function expireStale() {
@@ -433,6 +440,10 @@ app.get("/api/state", authAny, async (req, res) => {
                ORDER BY o.id, o.created_at DESC LIMIT 30`, [me.id])
     : { rows: [] };
 
+  const pokeR = await q(`SELECT * FROM pokemon WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [me.id]);
+  const destR = await q(
+    `SELECT id, owner_id, data, image_id FROM pokemon WHERE featured AND status <> 'traded' LIMIT 300`);
+
   const dmR = await q(
     `SELECT t.*, (SELECT count(*)::int FROM dm_messages m WHERE m.thread_id=t.id) AS n
      FROM dm_threads t WHERE (t.a_id=$1 OR t.b_id=$1)
@@ -516,6 +527,11 @@ app.get("/api/state", authAny, async (req, res) => {
       endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
     })),
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
+    pokemon: pokeR.rows.map((p) => ({
+      id: p.id, status: p.status, offerId: p.offer_id, featured: p.featured,
+      imageId: p.image_id, createdAt: p.created_at, ...p.data,
+    })),
+    featured: destR.rows.map((p) => ({ id: p.id, ownerId: p.owner_id, imageId: p.image_id, ...p.data })),
     dm: dmR.rows.map((t) => ({
       id: t.id,
       otherId: t.a_id === me.id ? t.b_id : t.a_id,
@@ -872,6 +888,8 @@ app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
         // La oferta ya se intercambió: fuera del mercado
         if (t.offer_id) {
           await q(`UPDATE offers SET status='traded' WHERE id=$1 AND status='active'`, [t.offer_id]);
+          // El Pokémon sale del inventario disponible y queda como intercambiado
+          await q(`UPDATE pokemon SET status='traded' WHERE offer_id=$1`, [t.offer_id]);
           // Y se cancelan las propuestas que otros dejaron sobre esa misma oferta
           const otras = await q(
             `SELECT id, a_id FROM trades WHERE offer_id=$1 AND id <> $2 AND state='proposal'`, [t.offer_id, t.id]);
@@ -923,6 +941,116 @@ app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   if (hasOffsite(texto))
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
       [t.id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección. Es la táctica nº1 de los estafadores."]);
+  res.json({ ok: true });
+});
+
+/* ---------- Inventario: mis Pokémon ---------- */
+const MAX_POKEMON = 60;
+
+// Normaliza y valida la ficha; se reutiliza al crear, editar y publicar
+function fichaPokemon(b) {
+  const especie = String(b?.species || "").trim();
+  if (especie.length < 2) throw "Falta la especie";
+  if (hasMoney(especie)) throw "No se permiten referencias a dinero real";
+  const ivs = Array.isArray(b?.ivs) ? b.ivs.map(Number).filter((n) => Number.isFinite(n)) : [];
+  const leg = checkLegality({ species: especie, level: b?.level, isShiny: !!b?.isShiny, ivs });
+  if (leg.flag === "impossible") throw "Ficha imposible: " + leg.reasons.join(" · ");
+  return {
+    species: especie,
+    isShiny: !!b?.isShiny,
+    level: b?.level ? Number(b.level) : null,
+    nature: b?.nature || null,
+    ability: b?.ability || null,
+    ball: b?.ball || null,
+    origin: b?.origin || null,
+    note: String(b?.note || "").trim().slice(0, 80) || null,
+    moves: (Array.isArray(b?.moves) ? b.moves : String(b?.moves || "").split(","))
+      .map((m) => String(m).trim()).filter(Boolean).slice(0, 4),
+    ivs: ivs.length === 6 ? ivs : [],
+    legality: leg,
+  };
+}
+
+app.post("/api/pokemon", auth, needsEmail, async (req, res) => {
+  const n = await q(`SELECT count(*)::int AS n FROM pokemon WHERE owner_id=$1 AND status <> 'traded'`, [req.me.id]);
+  if (n.rows[0].n >= MAX_POKEMON)
+    return err(res, "limit_reached", 429, `Tu inventario admite ${MAX_POKEMON} Pokémon`);
+  let data;
+  try { data = fichaPokemon(req.body); }
+  catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Datos inválidos"); }
+  let imageId = null;
+  if (req.body?.image) {
+    try { imageId = await saveImage(req.me.id, null, "origin", req.body.image); }
+    catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen no válida"); }
+  }
+  const r = await q(`INSERT INTO pokemon (owner_id, data, image_id) VALUES ($1,$2,$3) RETURNING id`,
+    [req.me.id, data, imageId]);
+  res.status(201).json({ id: r.rows[0].id });
+});
+
+app.post("/api/pokemon/:id", auth, needsEmail, async (req, res) => {
+  const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
+  if (p.rows[0].status === "traded") return err(res, "state_invalid", 409, "Un Pokémon ya intercambiado no se puede editar");
+  let data;
+  try { data = fichaPokemon({ ...p.rows[0].data, ...req.body }); }
+  catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Datos inválidos"); }
+  let imageId = p.rows[0].image_id;
+  if (req.body?.image) {
+    try { imageId = await saveImage(req.me.id, null, "origin", req.body.image); }
+    catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen no válida"); }
+  }
+  await q(`UPDATE pokemon SET data=$2, image_id=$3 WHERE id=$1`, [p.rows[0].id, data, imageId]);
+  // Si está publicado, la oferta se actualiza también
+  if (p.rows[0].offer_id)
+    await q(`UPDATE offers SET data = data || $2::jsonb WHERE id=$1 AND status='active'`,
+      [p.rows[0].offer_id, JSON.stringify({ ...data, originImage: imageId })]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/pokemon/:id", auth, async (req, res) => {
+  const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
+  if (p.rows[0].status === "listed") return err(res, "state_invalid", 409, "Retíralo del mercado antes de borrarlo");
+  await q(`DELETE FROM pokemon WHERE id=$1`, [p.rows[0].id]);
+  res.json({ ok: true });
+});
+
+app.post("/api/pokemon/:id/featured", auth, async (req, res) => {
+  const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
+  const nuevo = !p.rows[0].featured;
+  if (nuevo) {
+    const n = await q(`SELECT count(*)::int AS n FROM pokemon WHERE owner_id=$1 AND featured`, [req.me.id]);
+    if (n.rows[0].n >= 6) return err(res, "limit_reached", 429, "Puedes destacar hasta 6 Pokémon");
+  }
+  await q(`UPDATE pokemon SET featured=$2 WHERE id=$1`, [p.rows[0].id, nuevo]);
+  res.json({ featured: nuevo });
+});
+
+/* Publicar en el mercado directamente desde el inventario */
+app.post("/api/pokemon/:id/list", auth, needsEmail, async (req, res) => {
+  const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
+  if (p.rows[0].status !== "owned") return err(res, "state_invalid", 409, "Este Pokémon ya está publicado o intercambiado");
+  const wants = String(req.body?.wants || "").trim();
+  if (wants.length < 3) return err(res, "validation_error", 422, "Describe qué buscas a cambio");
+  if (hasMoney(wants)) return err(res, "money_offer_blocked", 422, "Las ofertas con dinero real están prohibidas");
+  const n = await q(`SELECT count(*)::int AS n FROM offers WHERE owner_id=$1 AND status='active'`, [req.me.id]);
+  if (n.rows[0].n >= MAX_OFERTAS)
+    return err(res, "limit_reached", 429, `Máximo ${MAX_OFERTAS} ofertas activas. Retira alguna para publicar otra.`);
+
+  const data = { ...p.rows[0].data, wants, originImage: p.rows[0].image_id || null };
+  const o = await q(`INSERT INTO offers (owner_id, data) VALUES ($1,$2) RETURNING id`, [req.me.id, data]);
+  await q(`UPDATE pokemon SET status='listed', offer_id=$2 WHERE id=$1`, [p.rows[0].id, o.rows[0].id]);
+  res.status(201).json({ offerId: o.rows[0].id });
+});
+
+app.post("/api/pokemon/:id/unlist", auth, async (req, res) => {
+  const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
+  if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
+  if (p.rows[0].offer_id) await q(`UPDATE offers SET status='removed' WHERE id=$1 AND status='active'`, [p.rows[0].offer_id]);
+  await q(`UPDATE pokemon SET status='owned', offer_id=NULL WHERE id=$1`, [p.rows[0].id]);
   res.json({ ok: true });
 });
 
