@@ -49,3 +49,11 @@ export function detectarEspecie(texto) {
   return null;
 }
 export const pideShiny = (texto) => /\bshiny\b|\bvariocolor\b|⭐|✨/i.test(String(texto || ""));
+
+// Nombre de la especie a partir de su número nacional
+const POR_ID = {};
+for (const [n, id] of Object.entries(DEX)) if (!POR_ID[id]) POR_ID[id] = n;
+export function nombrePorId(id, lang = "es") {
+  const objetivo = SPECIES.find((s) => dexId(s) === id);
+  return objetivo || null;
+}

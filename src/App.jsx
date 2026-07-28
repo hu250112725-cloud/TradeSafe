@@ -478,6 +478,22 @@ function Publicar({ refresh, done }) {
               <Aviso tipo={leido > 0 ? "verde" : "oro"}>{leido > 0 ? tx().fotoLeida(leido) : tx().fotoSinDatos}</Aviso>
             </div>
           )}
+
+          {/* El lector no puede saber si es shiny: se elige mirando las dos versiones */}
+          {leido > 0 && f.species && (
+            <div className="ficha mt-10" style={{ padding: 12 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().cualEs}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                {[false, true].map((sh) => (
+                  <button key={String(sh)} className={`opcion-shiny ${!!f.shiny === sh ? "elegida" : ""}`}
+                    onClick={() => setF({ ...f, shiny: sh })}>
+                    <Sprite nombre={f.species} tam={62} shiny={sh} />
+                    <span className="txt-xs">{sh ? `✨ ${tx().shinyOpc}` : tx().normalOpc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <CampoEspecie label={tx().lblEspecie} value={f.species} onChange={(v) => setF({ ...f, species: v })} placeholder={tx().phEspecie} />
         <label className="check"><input type="checkbox" checked={!!f.shiny} onChange={set("shiny")} /> {tx().esShiny}</label>

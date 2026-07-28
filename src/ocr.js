@@ -1,7 +1,7 @@
 // Lee una captura de Pokémon HOME y saca lo que puede: especie, nivel,
 // naturaleza, ball y movimientos. Es una ayuda, no una verdad absoluta:
 // el usuario siempre revisa y corrige antes de publicar.
-import { detectarEspecie, dexId } from "./species.js";
+import { detectarEspecie, dexId, nombrePorId } from "./species.js";
 import { movimiento, naturaleza, pokeball, cargarDatos } from "./pokedata.js";
 
 const CDN_TESSERACT = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/+esm";
@@ -38,9 +38,16 @@ export function analizarTexto(txt, lang = "es") {
   const todo = ls.join(" ");
   const r = { especie: null, nivel: null, naturaleza: null, ball: null, movimientos: [], shiny: false, origen: null };
 
+  // Primero el nombre escrito: una coincidencia literal es la prueba más fuerte.
+  // Si no aparece, se recurre al número de la Pokédex (N.º 0745), que va sobre
+  // fondo claro; pero un dígito mal leído daría otra especie, así que va después.
   r.especie = detectarEspecie(todo);
+  if (!r.especie) {
+    const num = todo.match(/n\.?\s*[ºo°]?\s*(\d{3,4})\b/i);
+    if (num) r.especie = nombrePorId(parseInt(num[1], 10), lang);
+  }
 
-  const nivel = todo.match(/(?:n[iv]{1,2}\.?|lv\.?|lvl\.?|nivel|level)\s*:?\s*(\d{1,3})/i);
+  const nivel = todo.match(/(?:n[.\s]*v|lv|lvl|nivel|level)\.?\s*:?\s*(\d{1,3})\b/i);
   if (nivel && +nivel[1] >= 1 && +nivel[1] <= 100) r.nivel = +nivel[1];
 
   r.shiny = /\bshiny\b|variocolor|✦|★|✨/i.test(todo);
@@ -64,11 +71,42 @@ export function analizarTexto(txt, lang = "es") {
   return r;
 }
 
+/* Amplía y realza la imagen: el OCR acierta bastante más así */
+function prepararImagen(dataUrl) {
+  return new Promise((ok) => {
+    const im = new Image();
+    im.onerror = () => ok(dataUrl);
+    im.onload = () => {
+      try {
+        const escala = Math.min(2.5, Math.max(1, 1600 / Math.max(im.width, im.height)));
+        const c = document.createElement("canvas");
+        c.width = Math.round(im.width * escala);
+        c.height = Math.round(im.height * escala);
+        const ctx = c.getContext("2d");
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(im, 0, 0, c.width, c.height);
+        const d = ctx.getImageData(0, 0, c.width, c.height);
+        const p = d.data;
+        for (let i = 0; i < p.length; i += 4) {
+          // gris y curva de contraste suave
+          const g = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+          const v = Math.max(0, Math.min(255, (g - 128) * 1.45 + 128));
+          p[i] = p[i + 1] = p[i + 2] = v;
+        }
+        ctx.putImageData(d, 0, 0);
+        ok(c.toDataURL("image/png"));
+      } catch { ok(dataUrl); }
+    };
+    im.src = dataUrl;
+  });
+}
+
 export async function leerCaptura(dataUrl, lang = "es", onProgreso) {
   await cargarDatos();
   const worker = await cargarMotor(lang);
   if (onProgreso) onProgreso(0.5);
-  const { data } = await worker.recognize(dataUrl);
+  const preparada = await prepararImagen(dataUrl);
+  const { data } = await worker.recognize(preparada);
   if (onProgreso) onProgreso(1);
   return { ...analizarTexto(data.text, lang), textoBruto: data.text };
 }

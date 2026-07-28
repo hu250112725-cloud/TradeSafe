@@ -39,6 +39,7 @@ const es = {
   fotoSinDatos: "No se pudo leer nada de la captura. Rellena a mano.",
   fotoAviso: "Se leen los datos de la imagen automáticamente. Puede equivocarse: revísalo siempre.",
   fotoDescarga: "La primera vez tarda un poco (descarga el lector).",
+  cualEs: "¿Cuál de los dos es el tuyo?", normalOpc: "Normal", shinyOpc: "Shiny",
   nivelLbl: "Nivel", naturalezaLbl: "Naturaleza", habilidadLbl: "Habilidad", ballLbl: "Poké Ball", origenLbl: "Origen",
 
   invPublicadas: "Publicadas", invIntercambiadas: "Intercambiadas", invVitrina: "Vitrina",
@@ -362,6 +363,7 @@ const en = {
   fotoSinDatos: "Couldn't read anything from the screenshot. Please fill it in manually.",
   fotoAviso: "The data is read from the image automatically. It can get things wrong: always check.",
   fotoDescarga: "The first time takes a moment (it downloads the reader).",
+  cualEs: "Which one is yours?", normalOpc: "Normal", shinyOpc: "Shiny",
   nivelLbl: "Level", naturalezaLbl: "Nature", habilidadLbl: "Ability", ballLbl: "Poké Ball", origenLbl: "Origin",
 
   invPublicadas: "Listed", invIntercambiadas: "Traded", invVitrina: "Showcase",

@@ -789,3 +789,12 @@ body.oscuro .barra-accion.activa, body.oscuro .barra-accion.hecho { background: 
 }
 .btn, .btn.mini, .btn.secundario, .btn.peligro { box-shadow: none; }
 .btn:not(.secundario):not(.peligro) { box-shadow: 0 1px 3px rgba(10,107,60,.25); }
+
+/* Elegir entre normal y shiny tras leer la captura */
+.opcion-shiny {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px; cursor: pointer; font: inherit; color: inherit;
+  border: 2px solid var(--linea); border-radius: 14px; background: var(--papel-alto);
+}
+.opcion-shiny.elegida { border-color: var(--verde); background: #e8f5ee; }
+body.oscuro .opcion-shiny.elegida { background: rgba(52,194,122,.12); }
