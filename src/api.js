@@ -57,7 +57,11 @@ export async function sync() {
 
 export async function createOffer(d) { await call("/offers", { method: "POST", body: d }); await sync(); }
 export async function removeOffer(id) { await call(`/offers/${id}`, { method: "DELETE" }); await sync(); }
-export async function propose(offerId, items) { await call("/trades", { method: "POST", body: { offerId, items } }); await sync(); }
+export async function propose(offerId, items) {
+  const r = await call("/trades", { method: "POST", body: { offerId, items } });
+  await sync();
+  return r.id;
+}
 export async function setItems(id, items) { await call(`/trades/${id}/items`, { method: "POST", body: { items } }); await sync(); }
 export async function askMediation(id) { await call(`/trades/${id}/mediation`, { method: "POST" }); await sync(); }
 export async function takeMediation(id) { await call(`/trades/${id}/mediation/take`, { method: "POST" }); await sync(); }

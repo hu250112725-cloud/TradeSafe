@@ -288,7 +288,7 @@ function EmailBanner({ me, refresh }) {
   if (me.emailVerified && !hecho) return null;
   if (hecho) return <div style={{ marginBottom: 14 }}><Aviso tipo="verde">{tx().emailListo}</Aviso></div>;
   return (
-    <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}>
+    <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--oro)" }}>
       <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().emailTitulo}</div>
       <p className="txt-s suave">{tx().emailIntro}</p>
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
@@ -325,7 +325,7 @@ function Pruebas({ trade, kind, me }) {
 function CodigoRecuperacion({ code, onListo }) {
   const [copiado, setCopiado] = useState(false);
   return (
-    <div className="ficha" style={{ borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}>
+    <div className="ficha" style={{ borderColor: "var(--oro)" }}>
       <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().codigoRecuperacion}</div>
       <Aviso tipo="oro">{tx().guardaCodigo}</Aviso>
       <div className="centrado mt-14">
@@ -573,7 +573,7 @@ function CartaOferta({ o, me, onAbrir }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat }) {
   const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
@@ -711,7 +711,11 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <Campo label={tx().lblItems} error={err}>
               <textarea value={give} onChange={(e) => setGive(e.target.value)} placeholder={tx().phItems} style={{ minHeight: 90 }} autoFocus />
             </Campo>
-            <button className="btn" disabled={busy} onClick={() => run(async () => { await api.propose(o.id, give.split("\n").map((x) => x.trim()).filter(Boolean)); setOpen(null); setGive(""); setProponiendo(false); })}>
+            <button className="btn" disabled={busy || !give.trim()} onClick={() => run(async () => {
+              const id = await api.propose(o.id, give.split("\n").map((x) => x.trim()).filter(Boolean));
+              setOpen(null); setGive(""); setProponiendo(false);
+              onIrAlChat && onIrAlChat(id);
+            })}>
               {busy ? "…" : tx().btnProponer}
             </button>
             <button className="btn secundario" onClick={() => setProponiendo(false)}>{tx().btnCancelar}</button>
@@ -767,7 +771,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
       )}
       {vista === "ofertas" && (<>
       {todas.length <= 3 && !busca && (
-        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)", boxShadow: "4px 4px 0 var(--verde)" }}>
+        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)" }}>
           <div className="h2" style={{ marginBottom: 8 }}>{tx().bienvenidaTitulo}</div>
           <ol style={{ paddingLeft: 20, margin: 0 }}>
             {tx().bienvenidaPasos.map((p, i) => <li key={i} className="txt-s" style={{ marginBottom: 6 }}>{p}</li>)}
@@ -1033,8 +1037,7 @@ function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
                 {o.status === "active" && (
                   <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                     <button className="btn mini secundario" onClick={() => onAbrirOferta(o.id)}>{tx().verOfertas}</button>
-                    <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }}
-                      disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setDetalle(null); })}>
+                    <button className="btn mini peligro" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setDetalle(null); })}>
                       {tx().retirar}
                     </button>
                   </div>
@@ -1060,7 +1063,7 @@ function Deseos({ me, refresh, onAbrirOferta }) {
       <p className="txt-s suave" style={{ marginBottom: 14 }}>{tx().deseosIntro}</p>
 
       {matches.length > 0 && (
-        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)", boxShadow: "4px 4px 0 var(--verde)" }}>
+        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)" }}>
           <div className="eyebrow" style={{ marginBottom: 8, color: "var(--verde)" }}>{tx().coincidencias(matches.length)}</div>
           {matches.map((m) => (
             <button key={m.offerId} className="fila" style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #d8ded9", cursor: "pointer", font: "inherit", padding: "9px 0" }}
@@ -1192,7 +1195,7 @@ function Infractores({ onBack }) {
       ) : shown.map((s) => {
         const u = userById(s.userId);
         return (
-          <div key={s.id} className="ticket" style={{ marginBottom: 14, borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }}>
+          <div key={s.id} className="ticket" style={{ marginBottom: 14, borderColor: "var(--lacre)" }}>
             <div className="ticket-cuerpo">
               <div className="tags">
                 <b style={{ color: "var(--lacre)", fontSize: 15 }}>{u?.displayName ?? tx().usuarioEliminado}</b>
@@ -1739,11 +1742,11 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             </div>
           </div>
           {offsitePend && (
-            <div className="ficha mt-14" style={{ borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }}>
+            <div className="ficha mt-14" style={{ borderColor: "var(--lacre)" }}>
               <Aviso tipo="lacre">{tx().avisoOffsite}</Aviso>
               <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                 <button className="btn mini secundario" onClick={() => setOffsitePend(null)}>{tx().btnCancelar}</button>
-                <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy}
+                <button className="btn mini peligro" disabled={busy}
                   onClick={() => { run(() => api.sendMessage(t.id, offsitePend, true)); setOffsitePend(null); }}>{tx().btnEnviarIgual}</button>
               </div>
             </div>
@@ -1830,7 +1833,7 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
           {casos.length === 0 ? (
             <p className="txt-xs suave">{tx().sinCasosMediacion}</p>
           ) : casos.map((t) => (
-            <button key={t.id} className="ficha" style={{ marginBottom: 10, borderColor: "var(--oro)", boxShadow: "4px 4px 0 var(--oro)" }}
+            <button key={t.id} className="ficha" style={{ marginBottom: 10, borderColor: "var(--oro)" }}
               onClick={() => setOpen(t.id)}>
               <div className="tags">
                 <Sello code={t.code} />
@@ -2148,7 +2151,7 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
         <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().privacidadCuenta}</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn mini secundario" disabled={busy} onClick={exportar}>{tx().btnExportar}</button>
-          <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy} onClick={borrar}>{tx().btnEliminar}</button>
+          <button className="btn mini peligro" disabled={busy} onClick={borrar}>{tx().btnEliminar}</button>
         </div>
       </div>
       {["moderator", "admin"].includes(me.role) && onStaff && (
@@ -2222,7 +2225,7 @@ function Staff({ me, refresh }) {
               ) : (
                 <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                   <button className="btn mini" disabled={busy} onClick={() => run(() => api.decide(d.id, { sanction: false }))}>{tx().btnSinSancion}</button>
-                  <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} onClick={() => { setDecideId(d.id); setResumen(""); }}>{tx().btnSancionar}</button>
+                  <button className="btn mini peligro" onClick={() => { setDecideId(d.id); setResumen(""); }}>{tx().btnSancionar}</button>
                 </div>
               )}
             </div>
@@ -2264,7 +2267,7 @@ function Staff({ me, refresh }) {
               ) : (
                 <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                   <button className="btn mini" disabled={busy} onClick={() => run(() => api.decideAppeal(s.id, true))}>{tx().btnAnularSancion}</button>
-                  <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy} onClick={() => run(() => api.decideAppeal(s.id, false))}>{tx().btnMantenerSancion}</button>
+                  <button className="btn mini peligro" disabled={busy} onClick={() => run(() => api.decideAppeal(s.id, false))}>{tx().btnMantenerSancion}</button>
                 </div>
               )}
             </div>
@@ -2280,7 +2283,7 @@ function Staff({ me, refresh }) {
               <span className="tag lacre">{tx().reportadaPor} {userById(r.byId)?.displayName ?? "—"}</span>
             </div>
             <p className="txt-s suave mt-6">{r.reason}</p>
-            <button className="btn mini peligro mt-10" style={{ boxShadow: "3px 3px 0 var(--lacre)" }} disabled={busy}
+            <button className="btn mini peligro mt-10" disabled={busy}
               onClick={() => run(() => api.staffRemoveOffer(r.offerId, r.reason))}>{tx().btnRetirarOferta}</button>
           </div>
         )))}
@@ -2517,7 +2520,7 @@ export default function App() {
             onCerrar={() => setVerNotis(false)} />
         )}
         {me && me.status === "active" && pendientes > 0 && tab !== "trades" && !verInfractores && phase === "listo" && (
-          <button className="ficha" style={{ marginBottom: 14, borderColor: "var(--lacre)", boxShadow: "4px 4px 0 var(--lacre)" }} onClick={() => setTab("trades")}>
+          <button className="ficha" style={{ marginBottom: 14, borderColor: "var(--lacre)" }} onClick={() => setTab("trades")}>
             <b style={{ color: "var(--lacre)" }}>{tx().pendientes(pendientes)}</b>
             <span className="txt-s suave">{tx().irTrades}</span>
           </button>
@@ -2554,7 +2557,8 @@ export default function App() {
         ) : tab === "mercado" ? (
           <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
             abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} esStaff={esStaff}
-            irAPublicar={irAPublicar} />
+            irAPublicar={irAPublicar}
+            onIrAlChat={(id) => { setTab("trades"); setAbrirTrade(id); }} />
         ) : tab === "inventario" ? (
           <Inventario me={me} refresh={refresh}
             onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }}

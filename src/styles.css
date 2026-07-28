@@ -782,3 +782,10 @@ body.oscuro .barra-accion.activa, body.oscuro .barra-accion.hecho { background: 
   background: var(--papel-alto); padding: 7px 7px 7px 4px; margin-top: 8px;
 }
 .pantalla-chat .rapidas { padding: 8px 0 0; }
+
+/* Las variantes pequeñas también sin sombra dura */
+.btn.mini, .btn.secundario, .btn.peligro, .metrica, .ficha, .ticket, button.ficha {
+  box-shadow: var(--sombra);
+}
+.btn, .btn.mini, .btn.secundario, .btn.peligro { box-shadow: none; }
+.btn:not(.secundario):not(.peligro) { box-shadow: 0 1px 3px rgba(10,107,60,.25); }
