@@ -691,3 +691,54 @@ body.oscuro .btn:not(.secundario):not(.peligro) { color: #08130c; }
 body.oscuro .avatar-cab, body.oscuro .fab, body.oscuro .btn-enviar { color: #08130c; }
 body.oscuro .btn.peligro { background: rgba(255,122,82,.12); color: #ff9b7a; border-color: rgba(255,122,82,.3); }
 body.oscuro .captura-prueba, body.oscuro .msg-avatar { border-color: var(--linea); }
+
+/* ===== Barra superior de detalle ===== */
+.barra-det {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0 14px;
+}
+.barra-det-tit { font-size: 17px; font-weight: 800; letter-spacing: -.2px; }
+.volver-ic {
+  width: 34px; height: 34px; border: none; background: none; cursor: pointer;
+  font-size: 30px; line-height: 1; color: var(--tinta); padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Fila del entrenador */
+.fila-entrenador {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.ent-avatar {
+  width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ent-inicial {
+  background: var(--verde); color: #fff;
+  font-family: "Unbounded", system-ui, sans-serif; font-weight: 800; font-size: 16px;
+}
+.ent-nombre {
+  border: none; background: none; padding: 0; cursor: pointer; font: inherit;
+  font-size: 15px; font-weight: 800; color: var(--tinta);
+}
+body.oscuro .ent-inicial { color: #08130c; }
+
+/* Aire al final para que el botón flotante no tape contenido */
+.content { padding-bottom: 130px; }
+
+/* Iconos de la barra inferior */
+.tab-ic { position: relative; display: flex; align-items: center; justify-content: center; height: 22px; }
+.tab-punto {
+  position: absolute; top: -1px; right: -4px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--lacre);
+}
+.tab-tx { font-size: 10.5px; font-weight: 700; }
+.tab.activa .tab-tx { color: var(--verde); }
+
+/* Cabecera compacta */
+.masthead { padding: 14px 16px 10px; align-items: center; }
+.wordmark { font-size: 21px; letter-spacing: -.6px; }
+.masthead-sub { display: none; }
+.sello.grande { font-size: 15px; }
+/* El sello BETA y los ajustes, más discretos */
+.masthead .sello { font-size: 9px; padding: 3px 8px; letter-spacing: 1.4px; }

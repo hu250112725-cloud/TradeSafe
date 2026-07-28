@@ -480,6 +480,51 @@ function Publicar({ refresh, done }) {
   );
 }
 
+/* Iconos de la barra inferior, en trazo fino */
+const ICONOS = {
+  inicio: "M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5",
+  inventario: "M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9ZM3.5 7.5 12 12m0 9v-9m8.5-4.5L12 12",
+  buzon: "M4 5.5h16v10H8.5L4 19.5v-14Z",
+};
+function Icono({ tipo, activo }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke={activo ? "var(--verde)" : "currentColor"} strokeWidth="1.7"
+      strokeLinecap="round" strokeLinejoin="round">
+      <path d={ICONOS[tipo]} />
+    </svg>
+  );
+}
+
+/* Barra superior compacta para pantallas de detalle */
+function BarraDetalle({ titulo, onVolver }) {
+  return (
+    <div className="barra-det">
+      <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
+      <span className="barra-det-tit">{titulo}</span>
+      <span style={{ width: 30 }} />
+    </div>
+  );
+}
+
+/* Fila del entrenador, estilo cabecera de ficha */
+function FilaEntrenador({ userId, cuando, onFicha }) {
+  const u = userById(userId);
+  if (!u) return null;
+  return (
+    <div className="fila-entrenador">
+      {u.avatarId
+        ? <img className="ent-avatar" src={api.imageUrl(u.avatarId)} alt="" />
+        : <span className="ent-avatar ent-inicial">{u.displayName.slice(0, 1).toUpperCase()}</span>}
+      <button className="ent-nombre" onClick={() => onFicha && onFicha(u.id)}>{u.displayName}</button>
+      {cuando && <span className="txt-xs suave">· {haceRato(cuando)}</span>}
+      {u.verified && <span className="tag verde">✓</span>}
+      {u.newAccount && u.trades === 0 && <span className="tag tenue">{tx().nuevoTrader}</span>}
+      {u.trades > 0 && <span className="tag tenue">{u.trades} {tx().trades}</span>}
+    </div>
+  );
+}
+
 /* Tarjeta del mercado: se ve de un vistazo qué se ofrece y qué se busca */
 function CartaOferta({ o, me, onAbrir }) {
   const dueno = userById(o.ownerId);
@@ -539,6 +584,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
   const [reportando, setReportando] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [reportado, setReportado] = useState(false);
+  const [proponiendo, setProponiendo] = useState(false);
   const { run, busy, err } = useRun(refresh);
   const [orden, setOrden] = useState("reciente");
   const [tope, setTope] = useState(20);
@@ -566,14 +612,15 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
     if (!o || o.status !== "active") { setOpen(null); return null; }
     return (
       <div>
-        <button className="enlace-volver" onClick={() => setOpen(null)}>{tx().volverMercado}</button>
+        <BarraDetalle titulo={tx().detalleOferta} onVolver={() => setOpen(null)} />
+        <FilaEntrenador userId={o.ownerId} cuando={o.createdAt} onFicha={onFicha} />
         {/* OFRECE */}
-        <div className="ficha mt-14 bloque-pk">
+        <div className="ficha bloque-pk">
           <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ofrece}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <Sprite nombre={o.species} tam={92} shiny={o.isShiny} halo />
+            <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
             <div style={{ minWidth: 0 }}>
-              <div className="h1" style={{ lineHeight: 1.1 }}>{o.species}</div>
+              <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{o.species}</div>
               {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
               {o.inTrade && <span className="tag oro mt-6" style={{ display: "inline-block" }}>{tx().enTrato}</span>}
             </div>
@@ -629,9 +676,9 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             const b = detectarEspecie(o.wants), bs = pideShiny(o.wants);
             return (
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {b ? <Sprite nombre={b} tam={92} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 92, height: 92, fontSize: 30 }}>?</span>}
+                {b ? <Sprite nombre={b} tam={62} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 62, height: 62, fontSize: 24 }}>?</span>}
                 <div style={{ minWidth: 0 }}>
-                  <div className="h1" style={{ lineHeight: 1.1 }}>{b || tx().cualquierCosa}</div>
+                  <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{b || tx().cualquierCosa}</div>
                   {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
                 </div>
               </div>
@@ -642,7 +689,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           </div>
         </div>
         <div className="ficha mt-14">
-          <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().ofrecidoPor}</div>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ofrecidoPor}</div>
           <Rep userId={o.ownerId} onFicha={onFicha} />
           <div className="tags mt-6"><Presencia lastSeen={userById(o.ownerId)?.lastSeen} /></div>
           {userById(o.ownerId)?.availability && (
@@ -651,30 +698,26 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           {sanctionsOf(o.ownerId).map((s) => (
             <div className="mt-10" key={s.id}><Aviso tipo="lacre"><b>{tx().sancionActiva}</b> {s.summary}</Aviso></div>
           ))}
-          {userById(o.ownerId)?.newAccount && <div className="mt-10"><Aviso tipo="lacre">{tx().avisoCuentaNueva}</Aviso></div>}
+          {userById(o.ownerId)?.newAccount && userById(o.ownerId)?.trades === 0 && (
+            <p className="txt-xs suave mt-10">⚠ {tx().avisoCuentaNueva}</p>
+          )}
         </div>
-        {o.originImage && (
-          <div className="ficha mt-14">
-            <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().pruebaOrigen}</div>
-            <a href={api.imageUrl(o.originImage)} target="_blank" rel="noreferrer">
-              <img src={api.imageUrl(o.originImage)} alt={tx().pruebaOrigen}
-                style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 8, border: "2px solid var(--tinta)", background: "#fff" }} />
-            </a>
-          </div>
-        )}
         {o.ownerId === me.id ? (
           <button className="btn peligro mt-14" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setOpen(null); })}>
             {tx().retirarOferta}
           </button>
-        ) : (
+        ) : proponiendo ? (
           <div className="ficha mt-14">
             <Campo label={tx().lblItems} error={err}>
-              <textarea value={give} onChange={(e) => setGive(e.target.value)} placeholder={tx().phItems} style={{ minHeight: 90 }} />
+              <textarea value={give} onChange={(e) => setGive(e.target.value)} placeholder={tx().phItems} style={{ minHeight: 90 }} autoFocus />
             </Campo>
-            <button className="btn" disabled={busy} onClick={() => run(async () => { await api.propose(o.id, give.split("\n").map((x) => x.trim()).filter(Boolean)); setOpen(null); setGive(""); })}>
+            <button className="btn" disabled={busy} onClick={() => run(async () => { await api.propose(o.id, give.split("\n").map((x) => x.trim()).filter(Boolean)); setOpen(null); setGive(""); setProponiendo(false); })}>
               {busy ? "…" : tx().btnProponer}
             </button>
+            <button className="btn secundario" onClick={() => setProponiendo(false)}>{tx().btnCancelar}</button>
           </div>
+        ) : (
+          <button className="fab" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
         )}
         {o.ownerId !== me.id && (reportado ? (
           <div className="mt-14"><Aviso tipo="verde">{tx().reporteEnviado}</Aviso></div>
@@ -1664,7 +1707,7 @@ function MisTrades({ me, refresh, abrir, onAbierto }) {
 }
 
 /* ================= Perfil ================= */
-function Perfil({ me, refresh, onStaff }) {
+function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
   const u = userById(me.id);
   const { run, busy } = useRun(refresh);
   const exportar = () => run(async () => {
@@ -1887,6 +1930,20 @@ function Perfil({ me, refresh, onStaff }) {
                 href={certUrl + "?lang=" + getLang()} target="_blank" rel="noreferrer">{tx().verCert}</a>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ajustes}</div>
+        <div className="fila" style={{ padding: "10px 0", borderBottom: "1px solid var(--linea)" }}>
+          <span className="txt-s">{oscuro ? tx().modoOscuro : tx().modoClaro}</span>
+          <button className="btn mini secundario" onClick={() => setOscuro(!oscuro)}>{oscuro ? "☀️" : "🌙"}</button>
+        </div>
+        <div className="fila" style={{ padding: "10px 0" }}>
+          <span className="txt-s">{tx().idioma}</span>
+          <button className="btn mini secundario mono" onClick={() => { setLang(getLang() === "es" ? "en" : "es"); refresh(); }}>
+            {getLang() === "es" ? "ES → EN" : "EN → ES"}
+          </button>
         </div>
       </div>
 
@@ -2239,19 +2296,16 @@ export default function App() {
 
   const nMatches = api.snap?.matches?.length || 0;
   const tabs = [
-    ["mercado", "🏠", nMatches > 0 ? `${tx().tabInicio} ●` : tx().tabInicio],
-    ["inventario", "📦", tx().tabInventario],
-    ["trades", "💬", pendientes > 0 ? `${tx().tabBuzon} ●` : tx().tabBuzon]];
+    ["mercado", "inicio", tx().tabInicio, nMatches > 0],
+    ["inventario", "inventario", tx().tabInventario, false],
+    ["trades", "buzon", tx().tabBuzon, pendientes > 0]];
 
   return (
     <div className="frame">
       <header className="masthead">
-        <div>
-          <div className="wordmark">Trade<span className="safe">Safe</span></div>
-          <div className="masthead-sub">{tx().subtitulo}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="wordmark">Trade<span className="safe">Safe</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button className="enlace-volver" style={{ fontSize: 17, textDecoration: "none", lineHeight: 1,
               border: "2px solid var(--tinta)", borderRadius: 999, width: 27, height: 27, fontWeight: 700 }}
               onClick={() => { setVerAyuda(!verAyuda); setVerNotis(false); }} aria-label={tx().ayuda}>?</button>
@@ -2275,17 +2329,6 @@ export default function App() {
                   : <span>{me.displayName.slice(0, 1).toUpperCase()}</span>}
               </button>
             )}
-            <Sello code="BETA" verde />
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button className="enlace-volver" style={{ fontSize: 15, textDecoration: "none" }}
-              onClick={() => setOscuro(!oscuro)} aria-label={oscuro ? tx().modoClaro : tx().modoOscuro}>
-              {oscuro ? "☀️" : "🌙"}
-            </button>
-            <button className="enlace-volver mono" style={{ fontSize: 11 }}
-              onClick={() => { setLang(getLang() === "es" ? "en" : "es"); refresh(); }}>
-              {getLang() === "es" ? "ES → EN" : "EN → ES"}
-            </button>
           </div>
         </div>
       </header>
@@ -2330,7 +2373,7 @@ export default function App() {
             )}
           </>
         ) : me.status === "suspended" ? (
-          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} />
         ) : verFicha ? (
           <FichaUsuario userId={verFicha} onBack={() => setVerFicha(null)} />
         ) : verInfractores ? (
@@ -2346,7 +2389,7 @@ export default function App() {
         ) : tab === "trades" ? (
           <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)} />
         ) : tab === "perfil" ? (
-          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} />
         ) : (
           <Staff me={me} refresh={refresh} />
         )}
@@ -2355,13 +2398,19 @@ export default function App() {
       {me && phase === "listo" && (
         <nav className="tabbar">
           <div className="tabbar-inner">
-            {tabs.map(([id, icono, label]) => (
-              <button key={id} className={`tab ${tab === id && !verInfractores && !verFicha ? "activa" : ""}`}
-                onClick={() => { setTab(id); setVerInfractores(false); setVerFicha(null); }}>
-                <span className="tab-ic">{icono}</span>
-                <span className="tab-tx">{label}</span>
-              </button>
-            ))}
+            {tabs.map(([id, icono, label, punto]) => {
+              const activo = tab === id && !verInfractores && !verFicha;
+              return (
+                <button key={id} className={`tab ${activo ? "activa" : ""}`}
+                  onClick={() => { setTab(id); setVerInfractores(false); setVerFicha(null); }}>
+                  <span className="tab-ic">
+                    <Icono tipo={icono} activo={activo} />
+                    {punto && <span className="tab-punto" />}
+                  </span>
+                  <span className="tab-tx">{label}</span>
+                </button>
+              );
+            })}
           </div>
         </nav>
       )}
