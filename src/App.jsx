@@ -427,6 +427,8 @@ function AuthScreen({ refresh, hasUsers, onCodigo }) {
 function Publicar({ refresh, done }) {
   const [f, setF] = useState({});
   const [detalles, setDetalles] = useState(false);
+  const [leyendo, setLeyendo] = useState(false);
+  const [leido, setLeido] = useState(null);
   const { run, busy, err } = useRun(refresh);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
@@ -445,6 +447,38 @@ function Publicar({ refresh, done }) {
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().publicarOferta}</h1>
       <div className="ficha">
         <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().soloObligatorio}</p>
+
+        <div style={{ marginBottom: 16 }}>
+          <button className="btn mini secundario" disabled={leyendo} onClick={async () => {
+            const img = await pickImage();
+            if (!img) return;
+            setLeyendo(true); setLeido(null);
+            try {
+              const { leerCaptura } = await import("./ocr.js");
+              const d = await leerCaptura(img, getLang());
+              const nuevo = { ...f };
+              let n = 0;
+              if (d.especie) { nuevo.species = d.especie; n++; }
+              if (d.nivel) { nuevo.level = d.nivel; n++; }
+              if (d.naturaleza) { nuevo.nature = d.naturaleza; n++; }
+              if (d.ball) { nuevo.ball = d.ball; n++; }
+              if (d.origen) { nuevo.origin = d.origen; n++; }
+              if (d.movimientos.length) { nuevo.moves = d.movimientos.join(", "); n++; }
+              if (d.shiny) { nuevo.shiny = true; n++; }
+              nuevo.originImage = img;              // la captura queda como prueba de origen
+              setF(nuevo);
+              if (n > 0) setDetalles(true);
+              setLeido(n);
+            } catch { setLeido(0); }
+            setLeyendo(false);
+          }}>{leyendo ? tx().leyendoFoto : tx().rellenarFoto}</button>
+          <p className="txt-xs suave mt-6">{tx().fotoAviso} {tx().fotoDescarga}</p>
+          {leido !== null && (
+            <div className="mt-10">
+              <Aviso tipo={leido > 0 ? "verde" : "oro"}>{leido > 0 ? tx().fotoLeida(leido) : tx().fotoSinDatos}</Aviso>
+            </div>
+          )}
+        </div>
         <CampoEspecie label={tx().lblEspecie} value={f.species} onChange={(v) => setF({ ...f, species: v })} placeholder={tx().phEspecie} />
         <label className="check"><input type="checkbox" checked={!!f.shiny} onChange={set("shiny")} /> {tx().esShiny}</label>
         <Campo label={tx().lblBuscas}><textarea value={f.wants || ""} onChange={set("wants")} placeholder={tx().phBuscas} /></Campo>
