@@ -566,3 +566,128 @@ body.oscuro .fab { color: #0d1a12; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .insignia-inv { position: absolute; top: 5px; right: 6px; font-size: 12px; }
 .insignia-inv.izq { left: 6px; right: auto; }
+
+/* ============================================================
+   INTERFAZ LIMPIA — capa que suaviza el estilo de sello pesado
+   ============================================================ */
+:root {
+  --papel: #faf7f2;
+  --papel-alto: #ffffff;
+  --tinta: #1c1917;
+  --tinta-suave: #78716c;
+  --linea: #e7e2da;
+  --verde: #0a6b3c;
+  --cielo: #f2efe9;
+  --sombra: 0 1px 2px rgba(28, 25, 23, .06), 0 1px 8px rgba(28, 25, 23, .04);
+  --radio: 16px;
+}
+
+body {
+  background-color: var(--papel);
+  background-image: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tarjetas: borde fino y sombra suave en vez del borde grueso con sombra dura */
+.ficha, .ticket, .metrica, button.ficha {
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  background: var(--papel-alto);
+}
+.ficha:active, button.ficha:active, .carta-oferta:active {
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(10, 107, 60, .10);
+}
+.carta-oferta { transition: box-shadow .12s ease; }
+
+/* Botones planos */
+.btn {
+  border: none; border-radius: 12px; box-shadow: none;
+  padding: 14px 18px; font-size: 14px; letter-spacing: -.1px;
+  background-image: none;
+}
+.btn:active { transform: scale(.985); box-shadow: none; }
+.btn.secundario { background: var(--cielo); color: var(--tinta); border: 1px solid var(--linea); }
+.btn.peligro { background: var(--lacre-papel); color: var(--lacre); border: 1px solid rgba(201, 58, 23, .3); box-shadow: none; }
+.btn.mini { border-radius: 999px; padding: 9px 15px; font-size: 12.5px; }
+
+/* Etiquetas suaves */
+.tag {
+  border: none; background: var(--cielo); color: var(--tinta-suave);
+  font-size: 11.5px; font-weight: 600; padding: 4px 10px;
+}
+.tag.verde { background: #e8f5ee; color: #0a6b3c; }
+.tag.oro { background: #fdf4e0; color: #8a6a10; }
+.tag.lacre { background: #fdeceb; color: #b3341a; }
+.tag.tenue { background: var(--cielo); color: var(--tinta-suave); }
+
+/* Campos de formulario */
+.campo input, .campo select, .campo textarea, .chat-input, .buscador {
+  border: 1px solid var(--linea); border-radius: 12px; background: var(--cielo);
+}
+.campo input:focus, .campo select:focus, .campo textarea:focus,
+.chat-input:focus, .buscador:focus {
+  outline: none; border-color: var(--verde); background: var(--papel-alto);
+  box-shadow: 0 0 0 3px rgba(10, 107, 60, .12);
+}
+.buscador { border-radius: 999px; }
+
+/* Barra inferior */
+.tabbar-inner { border: 1px solid var(--linea); box-shadow: 0 -1px 12px rgba(28,25,23,.06); }
+.tab.activa { background: transparent; color: var(--verde); box-shadow: none; }
+.tab { color: var(--tinta-suave); }
+
+/* Sellos y separadores más discretos */
+.sello { outline: none; border-width: 1.5px; transform: none; animation: none; }
+.ticket-talon { border-top: 1px solid var(--linea); background: var(--cielo); }
+.ticket-talon::before, .ticket-talon::after { display: none; }
+.contrato-grid > div:first-child { border-right: 1px solid var(--linea); }
+
+/* Avisos */
+.aviso { border: 1px solid var(--linea); border-left-width: 3px; border-radius: 12px; }
+
+/* Botón flotante */
+.fab { border: none; box-shadow: 0 4px 16px rgba(10, 107, 60, .3); }
+.fab:active { transform: scale(.97); box-shadow: 0 2px 8px rgba(10, 107, 60, .3); }
+
+/* Chat */
+.burbuja { border: none; box-shadow: none; background: var(--cielo); }
+.burbuja.mia { background: var(--verde); color: #fff; }
+.msg-avatar { border: 1px solid var(--linea); }
+.chat-cab { background: var(--papel-alto); border-bottom: 1px solid var(--linea); }
+.chat-form { border-top: 1px solid var(--linea); background: var(--papel-alto); }
+.btn-enviar { border: none; box-shadow: none; }
+.rapida { border: 1px solid var(--linea); background: var(--cielo); }
+.clave-chip { border: 1px solid rgba(10,107,60,.35); }
+.dia-sep { border: none; background: var(--cielo); }
+
+/* Inventario y otros */
+.casilla-inv { border: 1px solid var(--linea); box-shadow: var(--sombra); }
+.casilla-inv:active { transform: none; box-shadow: 0 0 0 3px rgba(10,107,60,.10); }
+.iv { border: 1px solid var(--linea); }
+.avatar-cab { border: none; background: var(--verde); color: #fff; }
+.vacio { border: 1px dashed var(--linea); }
+.tabla th { border-bottom: 1px solid var(--linea); }
+.tabla td { border-bottom: 1px solid var(--linea); }
+
+/* Modo oscuro adaptado a la interfaz limpia */
+body.oscuro {
+  --papel: #14120f;
+  --papel-alto: #1e1b18;
+  --tinta: #f5f1ea;
+  --tinta-suave: #a8a29b;
+  --linea: #2e2a26;
+  --cielo: #26221e;
+  --verde: #34c27a;
+  --sombra: 0 1px 2px rgba(0,0,0,.4);
+}
+body.oscuro { background-image: none; }
+body.oscuro .tag.verde { background: rgba(52,194,122,.14); color: #6fe0a5; }
+body.oscuro .tag.oro { background: rgba(224,185,63,.14); color: #e7c66b; }
+body.oscuro .tag.lacre { background: rgba(255,122,82,.14); color: #ff9b7a; }
+body.oscuro .burbuja.mia { background: var(--verde); color: #08130c; }
+body.oscuro .btn:not(.secundario):not(.peligro) { color: #08130c; }
+body.oscuro .avatar-cab, body.oscuro .fab, body.oscuro .btn-enviar { color: #08130c; }
+body.oscuro .btn.peligro { background: rgba(255,122,82,.12); color: #ff9b7a; border-color: rgba(255,122,82,.3); }
+body.oscuro .captura-prueba, body.oscuro .msg-avatar { border-color: var(--linea); }
