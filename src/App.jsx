@@ -592,31 +592,39 @@ function CartaOferta({ o, me, onAbrir }) {
     <button className="ficha carta-oferta" style={{ marginBottom: 12 }} onClick={onAbrir}>
       <div className="trueque">
         <div className="lado">
-          <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
+          <Sprite nombre={o.species} tam={58} shiny={o.isShiny} halo />
           <div className="lado-txt">
-            <b className="nombre-pk">{o.species}{o.isShiny ? " ★" : ""}</b>
-            {detalles && <span className="txt-xs suave">{detalles}</span>}
-            {o.level && <span className="txt-xs suave">{tx().nv} {o.level}</span>}
+            <b className="nombre-pk">{o.species}</b>
+            <span className="sub-pk">
+              {o.isShiny && <span className="marca-shiny">★ Shiny</span>}
+              {detalles && <span className="suave">{detalles}</span>}
+              {o.level && <span className="suave">{tx().nv} {o.level}</span>}
+            </span>
           </div>
         </div>
         <span className="flecha">⇄</span>
         <div className="lado derecha">
           <div className="lado-txt der">
-            <b className="nombre-pk">{buscado || tx().cualquierCosa}{buscado && buscadoShiny ? " ★" : ""}</b>
-            {buscado && <span className="txt-xs suave">{o.wants.length > 34 ? o.wants.slice(0, 33) + "…" : o.wants}</span>}
+            <b className="nombre-pk">{buscado || tx().cualquierCosa}</b>
+            <span className="sub-pk der">
+              {buscado && buscadoShiny && <span className="marca-shiny">★ Shiny</span>}
+              <span className="suave">{o.wants.length > 26 ? o.wants.slice(0, 25) + "…" : o.wants}</span>
+            </span>
           </div>
           {buscado
-            ? <Sprite nombre={buscado} tam={62} shiny={buscadoShiny} halo />
+            ? <Sprite nombre={buscado} tam={58} shiny={buscadoShiny} halo />
             : <span className="sprite-hueco">?</span>}
         </div>
       </div>
       <div className="pie-oferta">
-        <span className="tags" style={{ gap: 5 }}>
-          {dueno?.avatarId && <img className="mini-avatar" src={api.imageUrl(dueno.avatarId)} alt="" />}
+        <span className="tags" style={{ gap: 6 }}>
+          {dueno?.avatarId
+            ? <img className="mini-avatar" src={api.imageUrl(dueno.avatarId)} alt="" />
+            : <span className="mini-avatar mini-inicial">{(dueno?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>}
           <b className="txt-s">{dueno?.displayName ?? "—"}</b>
           {enLinea && <span className="punto-online" />}
-          <span className="txt-xs suave">{dueno?.trades ?? 0} {tx().trades}</span>
-          {dueno?.verified && <span className="txt-xs" style={{ color: "var(--verde)" }}>✓</span>}
+          {dueno?.verified && <span className="tag verde">✓ {tx().verificado.replace("✓ ", "")}</span>}
+          <span className="tag tenue">{dueno?.trades ?? 0} {tx().trades}</span>
           {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
           {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
           {o.originImage && <span className="tag verde">◎</span>}
@@ -628,7 +636,7 @@ function CartaOferta({ o, me, onAbrir }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat, stats }) {
   const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
@@ -813,9 +821,6 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         </button>
       </div>
 
-      {vista === "ofertas" && !open && (
-        <button className="fab" onClick={() => setVista("publicar")}>＋ {tx().nuevaPublicacion}</button>
-      )}
       {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} />}
       {vista === "deseos" && (
         <Deseos me={me} refresh={refresh}
@@ -864,6 +869,12 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         </div>
       )}
 
+      {stats && stats.cerrados > 0 && (
+        <div className="franja-confianza">
+          <span className="fc-icono">◈</span>
+          <span><b>{tx().franjaSegura(stats.cerrados)}</b><span className="suave"> · {tx().franjaProtegido}</span></span>
+        </div>
+      )}
       {todas.length > 0 && (
         <>
           <div className="txt-xs suave" style={{ marginBottom: 8 }}>{tx().nResultados(todas.length)}</div>
@@ -2748,7 +2759,7 @@ export default function App() {
           <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
             abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} esStaff={esStaff}
             irAPublicar={irAPublicar}
-            onIrAlChat={(id) => { setTab("trades"); setAbrirTrade(id); }} />
+            onIrAlChat={(id) => { setTab("trades"); setAbrirTrade(id); }} stats={stats} />
         ) : tab === "inventario" ? (
           <Inventario me={me} refresh={refresh}
             onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }}
