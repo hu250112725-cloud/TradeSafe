@@ -567,34 +567,79 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
     return (
       <div>
         <button className="enlace-volver" onClick={() => setOpen(null)}>{tx().volverMercado}</button>
-        <div className="ticket mt-14">
-          <div className="ticket-cuerpo">
-            <div className="centrado" style={{ marginBottom: 6 }}>
-              <Sprite nombre={o.species} tam={132} shiny={o.isShiny} halo />
+        {/* OFRECE */}
+        <div className="ficha mt-14 bloque-pk">
+          <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ofrece}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <Sprite nombre={o.species} tam={92} shiny={o.isShiny} halo />
+            <div style={{ minWidth: 0 }}>
+              <div className="h1" style={{ lineHeight: 1.1 }}>{o.species}</div>
+              {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
+              {o.inTrade && <span className="tag oro mt-6" style={{ display: "inline-block" }}>{tx().enTrato}</span>}
             </div>
-            <div className="tags">
-              <span className="h1">{o.species}</span>
-              {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
-              {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
-              {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
+          </div>
+
+          {[o.level, o.nature, o.ability, o.ball, o.origin].some(Boolean) && (
+            <div className="datos-pk">
+              {[[tx().nivelLbl, o.level], [tx().naturalezaLbl, o.nature], [tx().habilidadLbl, o.ability],
+                [tx().ballLbl, o.ball], [tx().origenLbl, o.origin]]
+                .filter(([, v]) => v).map(([k, v]) => (
+                  <div key={k} className="dato-fila"><span className="suave">{k}</span><b>{v}</b></div>
+                ))}
             </div>
-            {[o.nature, o.ability, o.ball, o.origin && `${tx().origen} ${o.origin}`].filter(Boolean).length > 0 && (
-              <div className="txt-xs suave mt-6">
-                {[o.nature, o.ability, o.ball, o.origin && `${tx().origen} ${o.origin}`].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            {o.ivs?.length === 6 && (
-              <div className="ivs mt-14">
-                {o.ivs.map((v, i) => (
-                  <div key={i} className={`iv ${v === 31 ? "max" : ""}`}>
-                    <div className="l">{tx().ivLabels[i]}</div><div className="n">{v}</div>
-                  </div>
+          )}
+
+          {o.moves?.length > 0 && (
+            <>
+              <div className="eyebrow" style={{ margin: "14px 0 6px" }}>{tx().movimientos}</div>
+              <div className="datos-pk">
+                {o.moves.map((m, i) => (
+                  <div key={i} className="dato-fila"><span className="suave">{i + 1}</span><b>{m}</b></div>
                 ))}
               </div>
-            )}
-            {o.moves?.length > 0 && <div className="tags mt-10">{o.moves.map((m) => <span key={m} className="tag">{m}</span>)}</div>}
+            </>
+          )}
+
+          {o.ivs?.length === 6 && (
+            <div className="ivs mt-14">
+              {o.ivs.map((v, i) => (
+                <div key={i} className={`iv ${v === 31 ? "max" : ""}`}>
+                  <div className="l">{tx().ivLabels[i]}</div><div className="n">{v}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {o.originImage && (
+            <>
+              <div className="eyebrow" style={{ margin: "16px 0 8px" }}>{tx().capturas}</div>
+              <a href={api.imageUrl(o.originImage)} target="_blank" rel="noreferrer">
+                <img src={api.imageUrl(o.originImage)} alt={tx().pruebaOrigen} className="captura-prueba" />
+              </a>
+            </>
+          )}
+        </div>
+
+        <div className="separador-trueque">⇅</div>
+
+        {/* BUSCA */}
+        <div className="ficha bloque-pk">
+          <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().buscaCol}</div>
+          {(() => {
+            const b = detectarEspecie(o.wants), bs = pideShiny(o.wants);
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {b ? <Sprite nombre={b} tam={92} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 92, height: 92, fontSize: 30 }}>?</span>}
+                <div style={{ minWidth: 0 }}>
+                  <div className="h1" style={{ lineHeight: 1.1 }}>{b || tx().cualquierCosa}</div>
+                  {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✨ Shiny</div>}
+                </div>
+              </div>
+            );
+          })()}
+          <div className="datos-pk">
+            <div className="dato-fila"><span className="suave">{tx().requisitos}</span><b style={{ textAlign: "right" }}>{o.wants}</b></div>
           </div>
-          <div className="ticket-talon"><span className="txt-xs">{tx().busca} {o.wants}</span></div>
         </div>
         <div className="ficha mt-14">
           <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().ofrecidoPor}</div>
@@ -666,6 +711,9 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         </button>
       </div>
 
+      {vista === "ofertas" && !open && (
+        <button className="fab" onClick={() => setVista("publicar")}>＋ {tx().nuevaPublicacion}</button>
+      )}
       {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} />}
       {vista === "deseos" && (
         <Deseos me={me} refresh={refresh}
@@ -715,7 +763,10 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
       )}
 
       {todas.length > 0 && (
-        <div className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().nResultados(todas.length)}</div>
+        <>
+          <div className="txt-xs suave" style={{ marginBottom: 8 }}>{tx().nResultados(todas.length)}</div>
+          <div className="cols-mercado"><span>{tx().ofrece}</span><span>{tx().buscaCol}</span></div>
+        </>
       )}
       {offers.length === 0 ? (
         <Vacio icono="📦">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
@@ -871,6 +922,7 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
 /* ================= Inventario: lo mío ================= */
 function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
   const [sub, setSub] = useState("publicadas");
+  const [detalle, setDetalle] = useState(null);
   const { run, busy, err } = useRun(refresh);
   const mias = api.snap.offers.filter((o) => o.ownerId === me.id);
   const activas = mias.filter((o) => o.status === "active");
@@ -898,47 +950,57 @@ function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
       {sub === "vitrina" ? (
         vitrina.length === 0
           ? <Vacio icono="🏆">{tx().vitrinaVacia}</Vacio>
-          : <div className="ficha">
+          : <div className="rejilla-inv">
               {vitrina.map((v, i) => (
-                <div key={i} className="fila" style={{ borderTop: i ? "1px solid #d8ded9" : "none", padding: "10px 0" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <Sprite nombre={v.species} tam={40} shiny={v.isShiny} />
-                    <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ⭐" : ""}</span>
-                  </span>
-                  {v.note && <span className="txt-xs suave">{v.note}</span>}
+                <div key={i} className="casilla-inv" style={{ cursor: "default" }}>
+                  {v.isShiny && <span className="insignia-inv izq">✨</span>}
+                  <Sprite nombre={v.species} tam={54} shiny={v.isShiny} />
+                  <span className="nom">{v.species}</span>
                 </div>
               ))}
             </div>
       ) : lista.length === 0 ? (
         <Vacio icono={sub === "publicadas" ? "📦" : "🤝"}>{sub === "publicadas" ? tx().invVacio : tx().invSinTrades}</Vacio>
-      ) : lista.map((o) => (
-        <div key={o.id} className="ficha" style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <Sprite nombre={o.species} tam={52} shiny={o.isShiny} halo />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <b className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</b>
-              <div className="txt-xs suave" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tx().busca} {o.wants}
-              </div>
-              <div className="tags mt-6">
-                {o.status === "traded"
-                  ? <span className="tag verde">{tx().yaIntercambiado}</span>
-                  : o.inTrade
-                    ? <span className="tag oro">{tx().enTrato}</span>
-                    : <span className="tag tenue">{tx().publicada}</span>}
-                {o.originImage && <span className="tag verde">📷</span>}
-              </div>
-            </div>
+      ) : (
+        <>
+          <div className="rejilla-inv">
+            {lista.map((o) => (
+              <button key={o.id} className="casilla-inv" onClick={() => setDetalle(detalle === o.id ? null : o.id)}>
+                {o.isShiny && <span className="insignia-inv izq">✨</span>}
+                {o.status === "traded" ? <span className="insignia-inv">✓</span>
+                  : o.inTrade ? <span className="insignia-inv">🤝</span>
+                  : <span className="insignia-inv">🏷️</span>}
+                <Sprite nombre={o.species} tam={54} shiny={o.isShiny} />
+                <span className="nom">{o.species}</span>
+              </button>
+            ))}
           </div>
-          {o.status === "active" && (
-            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <button className="btn mini secundario" onClick={() => onAbrirOferta(o.id)}>{tx().verOfertas}</button>
-              <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }}
-                disabled={busy} onClick={() => run(() => api.removeOffer(o.id))}>{tx().retirar}</button>
-            </div>
-          )}
-        </div>
-      ))}
+          {detalle && (() => {
+            const o = lista.find((x) => x.id === detalle);
+            if (!o) return null;
+            return (
+              <div className="ficha mt-14">
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <Sprite nombre={o.species} tam={54} shiny={o.isShiny} halo />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <b className="txt-s">{o.species}{o.isShiny ? " ⭐" : ""}</b>
+                    <div className="txt-xs suave">{tx().busca} {o.wants}</div>
+                  </div>
+                </div>
+                {o.status === "active" && (
+                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <button className="btn mini secundario" onClick={() => onAbrirOferta(o.id)}>{tx().verOfertas}</button>
+                    <button className="btn mini peligro" style={{ boxShadow: "3px 3px 0 var(--lacre)" }}
+                      disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setDetalle(null); })}>
+                      {tx().retirar}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </>
+      )}
     </div>
   );
 }
@@ -1104,6 +1166,53 @@ function Infractores({ onBack }) {
         );
       })}
     </div>
+  );
+}
+
+/* Cabecera del chat: qué das y qué recibes, siempre a la vista */
+function CabeceraChat({ t, offer, soyA }) {
+  const miItems = soyA ? (t.aItems?.length ? t.aItems : [t.aGive]) : null;
+  return (
+    <div className="chat-cab">
+      <div className="chat-cab-lado">
+        <span className="chat-cab-lbl">{tx().tuDas}</span>
+        {soyA ? (
+          <span className="chat-cab-txt">{(miItems || []).join(" + ") || "—"}</span>
+        ) : (
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {offer && <Sprite nombre={offer.species} tam={34} shiny={offer.isShiny} />}
+            <span className="chat-cab-txt">{offer?.species ?? "—"}</span>
+          </span>
+        )}
+      </div>
+      <span className="chat-cab-flecha">⇄</span>
+      <div className="chat-cab-lado der">
+        <span className="chat-cab-lbl">{tx().tuRecibes}</span>
+        {soyA ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="chat-cab-txt">{offer?.species ?? "—"}</span>
+            {offer && <Sprite nombre={offer.species} tam={34} shiny={offer.isShiny} />}
+          </span>
+        ) : (
+          <span className="chat-cab-txt">{(t.aItems?.length ? t.aItems : [t.aGive]).join(" + ")}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Clave de amigo copiable */
+function ClaveChip({ clave }) {
+  const [copiada, setCopiada] = useState(false);
+  if (!clave) return null;
+  return (
+    <button className="clave-chip" onClick={async () => {
+      try { await navigator.clipboard.writeText(clave); } catch { /* sin permiso */ }
+      setCopiada(true); setTimeout(() => setCopiada(false), 2000);
+    }}>
+      <span className="mono">🔑 {clave}</span>
+      <span className="txt-xs">{copiada ? tx().claveCopiada : tx().copiarClave}</span>
+    </button>
   );
 }
 
@@ -1354,6 +1463,12 @@ function TradeView({ trade: id, me, refresh, onBack }) {
       {(["in_progress", "post_proof"].includes(t.state) || t.mediationRequested || t.mediatorId) && (
         <>
           <div className="ticket mt-14">
+            <CabeceraChat t={t} offer={offer} soyA={soyA} />
+            {(soyA ? t.friendB : t.friendA) && (
+              <div style={{ padding: "10px 12px 0" }}>
+                <ClaveChip clave={soyA ? t.friendB : t.friendA} />
+              </div>
+            )}
             <div className="eyebrow" style={{ padding: "10px 14px 0" }}>{tx().chatTitulo}</div>
             <div className="chat-caja" ref={cajaChat}>
               {t.messages.length === 0 && (
@@ -1394,11 +1509,17 @@ function TradeView({ trade: id, me, refresh, onBack }) {
                 );
               })}
             </div>
+            <div className="rapidas">
+              {[tx().rr1, tx().rr2, tx().rr3, tx().rr4].map((r) => (
+                <button key={r} className="rapida" disabled={busy}
+                  onClick={() => run(() => api.sendMessage(t.id, r))}>{r}</button>
+              ))}
+            </div>
             <div className="chat-form">
               <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") enviar(); }}
                 placeholder={tx().phMensaje} />
-              <button className="btn mini" disabled={busy} onClick={enviar}>{tx().btnEnviar}</button>
+              <button className="btn-enviar" disabled={busy || !msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>➤</button>
             </div>
           </div>
           {offsitePend && (

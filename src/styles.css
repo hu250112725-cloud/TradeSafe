@@ -457,3 +457,112 @@ body.oscuro .dia-sep { background: var(--cielo); }
   font-family: "Unbounded", system-ui, sans-serif; font-weight: 800; font-size: 13px; color: var(--tinta);
 }
 .avatar-cab img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ===== Cabecera del chat: qué das ⇄ qué recibes ===== */
+.chat-cab {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px; background: var(--cielo);
+  border-bottom: 2px solid var(--tinta);
+}
+.chat-cab-lado { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.chat-cab-lado.der { align-items: flex-end; text-align: right; }
+.chat-cab-lbl {
+  font-family: "Chivo Mono", ui-monospace, monospace;
+  font-size: 8.5px; letter-spacing: 1.6px; color: var(--tinta-suave);
+}
+.chat-cab-txt {
+  font-size: 13px; font-weight: 700; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; max-width: 140px;
+}
+.chat-cab-flecha { font-size: 15px; color: var(--tinta-suave); flex-shrink: 0; }
+
+/* Clave de amigo copiable */
+.clave-chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 9px 13px; cursor: pointer; font: inherit;
+  border: 2px solid var(--verde); border-radius: 999px;
+  background: var(--cielo); color: var(--tinta);
+  font-size: 13px; font-weight: 700;
+}
+.clave-chip:active { transform: scale(.98); }
+.clave-chip .txt-xs { color: var(--verde); font-weight: 700; white-space: nowrap; }
+
+/* Respuestas rápidas */
+.rapidas {
+  display: flex; gap: 6px; padding: 9px 10px 0; overflow-x: auto;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.rapidas::-webkit-scrollbar { display: none; }
+.rapida {
+  flex: 0 0 auto; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+  border: 1.5px solid var(--tinta-suave); background: var(--papel-alto); color: var(--tinta);
+}
+.rapida:active { background: var(--cielo); }
+.rapida:disabled { opacity: .5; }
+
+/* Botón de enviar redondo */
+.btn-enviar {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: 50%; cursor: pointer;
+  border: 2px solid var(--tinta); background: var(--verde); color: var(--papel-alto);
+  font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  box-shadow: 2px 2px 0 var(--tinta);
+}
+.btn-enviar:active { transform: translate(2px, 2px); box-shadow: none; }
+.btn-enviar:disabled { opacity: .4; }
+body.oscuro .btn-enviar { color: #0d1a12; }
+
+/* ===== Ficha de la oferta: bloques de datos ===== */
+.bloque-pk { padding: 16px; }
+.datos-pk { margin-top: 14px; border-top: 1px solid rgba(74,90,81,.22); }
+.dato-fila {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  padding: 9px 0; font-size: 14px; border-bottom: 1px solid rgba(74,90,81,.14);
+}
+.dato-fila:last-child { border-bottom: none; }
+.dato-fila b { text-align: right; word-break: break-word; }
+
+.separador-trueque {
+  text-align: center; font-size: 22px; color: var(--tinta-suave);
+  margin: 12px 0; opacity: .6; letter-spacing: 2px;
+}
+
+.captura-prueba {
+  width: 100%; max-height: 260px; object-fit: contain; display: block;
+  border-radius: 10px; border: 2px solid var(--tinta); background: #fff;
+}
+
+/* Cabeceras de columna del mercado */
+.cols-mercado {
+  display: flex; justify-content: space-between; padding: 0 14px 8px;
+  font-family: "Chivo Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 2px; color: var(--tinta-suave);
+  text-transform: uppercase;
+}
+
+/* Botón flotante de nueva oferta */
+.fab {
+  position: fixed; right: 16px; bottom: 84px; z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  padding: 13px 20px; border-radius: 999px; cursor: pointer;
+  border: 2px solid var(--tinta); background: var(--verde); color: var(--papel-alto);
+  font-family: "Unbounded", system-ui, sans-serif; font-weight: 800; font-size: 13px;
+  box-shadow: 4px 4px 0 var(--tinta);
+}
+.fab:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--tinta); }
+body.oscuro .fab { color: #0d1a12; }
+
+/* Rejilla del inventario */
+.rejilla-inv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.casilla-inv {
+  position: relative; aspect-ratio: 1; border-radius: 14px; cursor: pointer;
+  border: 2px solid var(--tinta); background: var(--papel-alto);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  box-shadow: 3px 3px 0 var(--tinta); padding: 6px; font: inherit; color: inherit;
+}
+.casilla-inv:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--tinta); }
+.casilla-inv .nom { font-size: 10.5px; font-weight: 700; text-align: center; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.insignia-inv { position: absolute; top: 5px; right: 6px; font-size: 12px; }
+.insignia-inv.izq { left: 6px; right: auto; }
