@@ -907,25 +907,20 @@ function Ayuda({ onCerrar }) {
 
 /* ================= Comunidad: sorteos y tablón ================= */
 function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
-  const [sub, setSub] = useState("sorteos");
   const [msg, setMsg] = useState("");
   const [crear, setCrear] = useState(false);
   const [f, setF] = useState({ days: 7, minTrades: 0 });
   const { run, busy, err } = useRun(refresh);
   const sorteos = api.snap.giveaways || [];
-  const tablon = api.snap.board || [];
 
   return (
     <div>
       <div className="tags" style={{ marginBottom: 14 }}>
-        {[["sorteos", tx().sorteos], ["tablon", tx().tablon]].map(([id, l]) => (
-          <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`} onClick={() => setSub(id)}>{l}</button>
-        ))}
         <button className="btn mini secundario" onClick={onOffenders}>{tx().infractoresBtn}</button>
       </div>
       {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
-      {sub === "sorteos" && (
+      {(
         <>
           {esStaff && (crear ? (
             <div className="ficha" style={{ marginBottom: 14 }}>
@@ -994,156 +989,6 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
         </>
       )}
 
-      {sub === "tablon" && (
-        <>
-          <p className="txt-s suave" style={{ marginBottom: 14 }}>{tx().tablonIntro}</p>
-          <div className="ficha" style={{ marginBottom: 14 }}>
-            <textarea className="chat-input" style={{ width: "100%", borderRadius: 10, minHeight: 60 }}
-              value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={500} placeholder={tx().phTablon} />
-            <button className="btn mini mt-10" disabled={busy || msg.trim().length < 3}
-              onClick={() => run(async () => { await api.postBoard(msg.trim()); setMsg(""); })}>{tx().btnPublicarTablon}</button>
-          </div>
-          {tablon.length === 0 ? <Vacio icono="▤">{tx().sinTablon}</Vacio> : tablon.map((b) => (
-            <div key={b.id} className="ficha" style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <button className="enlace-volver" style={{ fontWeight: 700 }} onClick={() => onFicha(b.byId)}>{b.byName}</button>
-                <span className="txt-xs suave">{fecha(b.at)}</span>
-              </div>
-              <p className="txt-s mt-6" style={{ whiteSpace: "pre-wrap" }}>{b.body}</p>
-              {(b.byId === me.id || esStaff) && (
-                <button className="enlace-volver txt-xs mt-6" disabled={busy} onClick={() => run(() => api.delBoard(b.id))}>{tx().quitar}</button>
-              )}
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ================= Mensaje directo ================= */
-function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
-  const t = api.snap.dm.find((x) => x.id === hilo);
-  const [msg, setMsg] = useState("");
-  const [offsite, setOffsite] = useState(null);
-  const [reportando, setReportando] = useState(false);
-  const [motivo, setMotivo] = useState("");
-  const [hecho, setHecho] = useState(false);
-  const { run, busy, err } = useRun(refresh);
-  const caja = useRef(null);
-  const otro = userById(t?.otherId);
-  const bloqueado = (api.snap.blocked || []).includes(t?.otherId);
-
-  useEffect(() => { if (t) marcarLeido("dm:" + t.id); }, [t?.id, t?.messages?.length]);
-  useEffect(() => { const c = caja.current; if (c) c.scrollTop = c.scrollHeight; }, [t?.messages?.length]);
-  if (!t) return null;
-
-  const enviar = async () => {
-    const texto = msg.trim();
-    if (!texto) return;
-    setMsg("");
-    try { await api.enviarDM(t.id, texto); refresh(); }
-    catch (e) {
-      if (String(e.message).includes("táctica") || String(e.message).includes("tactic")) setOffsite(texto);
-      else { setMsg(texto); run(() => { throw e; }); }
-    }
-  };
-
-  return (
-    <div className="pantalla-chat">
-      <div className="barra-det" style={{ paddingBottom: 8 }}>
-        <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
-        <span className="barra-det-tit">{tx().chatDirecto}</span>
-        <span style={{ width: 34 }} />
-      </div>
-
-      <div className="fila-entrenador" style={{ marginBottom: 10 }}>
-        {otro?.avatarId
-          ? <img className="ent-avatar" src={api.imageUrl(otro.avatarId)} alt="" />
-          : <span className="ent-avatar ent-inicial">{(otro?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>}
-        <button className="ent-nombre" onClick={() => onFicha && onFicha(otro?.id)}>{otro?.displayName ?? "—"}</button>
-        <Presencia lastSeen={otro?.lastSeen} />
-        {bloqueado && <span className="tag lacre">{tx().bloqueado}</span>}
-      </div>
-
-      <div style={{ marginBottom: 8 }}><Aviso tipo="oro">{tx().avisoDirecto}</Aviso></div>
-      {err && <div style={{ marginBottom: 8 }}><Aviso tipo="lacre">{err}</Aviso></div>}
-
-      <div className="chat-mensajes" ref={caja}>
-        {t.messages.map((m, i) => {
-          const previo = t.messages[i - 1];
-          const nuevoDia = !previo || !mismoDia(previo.at, m.at);
-          const esHoy = mismoDia(m.at, new Date());
-          const esAyer = mismoDia(m.at, Date.now() - 86400000);
-          if (m.system) return (
-            <span key={i} style={{ display: "contents" }}>
-              {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
-              <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
-            </span>
-          );
-          const mia = m.by === me.id;
-          const inicio = nuevoDia || !previo || previo.system || previo.by !== m.by
-            || new Date(m.at) - new Date(previo.at) > 300000;
-          return (
-            <span key={i} style={{ display: "contents" }}>
-              {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
-              <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
-                {!mia && (inicio && otro?.avatarId
-                  ? <img className="msg-avatar" src={api.imageUrl(otro.avatarId)} alt="" />
-                  : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "◍" : ""}</span>)}
-                <div className={`burbuja ${mia ? "mia" : "suya"}`}>
-                  {m.text}
-                  <span className="hora-msg">{hora(m.at)}</span>
-                </div>
-              </div>
-            </span>
-          );
-        })}
-      </div>
-
-      {offsite && (
-        <div className="ficha" style={{ margin: "8px 0" }}>
-          <Aviso tipo="lacre">{tx().avisoOffsite}</Aviso>
-          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-            <button className="btn mini secundario" onClick={() => setOffsite(null)}>{tx().btnCancelar}</button>
-            <button className="btn mini peligro" disabled={busy}
-              onClick={() => { run(() => api.enviarDM(t.id, offsite, true)); setOffsite(null); }}>
-              {tx().btnEnviarIgual}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {hecho ? (
-        <div style={{ marginTop: 8 }}><Aviso tipo="verde">{tx().chatReportado}</Aviso></div>
-      ) : reportando ? (
-        <div className="ficha" style={{ marginTop: 8 }}>
-          <Campo label={tx().lblMotivoChat}>
-            <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-          </Campo>
-          <button className="btn mini peligro" disabled={busy}
-            onClick={() => run(async () => { await api.reportarDM(t.id, motivo); setReportando(false); setMotivo(""); setHecho(true); })}>
-            {tx().btnEnviarReporte}
-          </button>
-          <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setReportando(false)}>{tx().btnCancelar}</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          <button className="btn mini secundario" onClick={() => setReportando(true)}>{tx().reportarChat}</button>
-          <button className="btn mini secundario" disabled={busy} onClick={() => {
-            if (bloqueado) return run(() => api.desbloquear(otro.id));
-            if (confirm(tx().confirmBloquear)) run(() => api.bloquear(otro.id));
-          }}>{bloqueado ? tx().desbloquear : tx().bloquear}</button>
-        </div>
-      )}
-
-      {!bloqueado && (
-        <div className="chat-form">
-          <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
-          <button className="btn-enviar" disabled={busy || !msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -2132,8 +1977,6 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
   const [apelaId, setApelaId] = useState(null);
   const [apelaTxt, setApelaTxt] = useState("");
   const [bio, setBio] = useState(u?.bio || "");
-  const [vitrina, setVitrina] = useState(u?.showcase || []);
-  const [nuevo, setNuevo] = useState({});
   const [guardado, setGuardado] = useState(false);
   const [fav, setFav] = useState(me.favorite || "");
   const [disp, setDisp] = useState(me.availability || "");
@@ -2282,44 +2125,11 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
       </div>
 
       <div className="ficha mt-14">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div className="eyebrow">{tx().vitrina}</div>
-          <span className="txt-xs suave">{tx().vitrinaCuenta(vitrina.length)}</span>
-        </div>
-        <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().vitrinaIntro}</p>
-
-        {vitrina.map((v, i) => (
-          <div key={i} className="fila" style={{ borderTop: "1px solid #d8ded9", padding: "10px 0", alignItems: "center" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Sprite nombre={v.species} tam={34} />
-              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ★" : ""}</span>
-            </span>
-            <button className="enlace-volver" onClick={() => setVitrina(vitrina.filter((_, j) => j !== i))}>{tx().quitar}</button>
-          </div>
-        ))}
-
-        {vitrina.length < 6 && (
-          <div style={{ borderTop: "1px solid #d8ded9", paddingTop: 14, marginTop: 10 }}>
-            <CampoEspecie label={tx().lblEspecie} value={nuevo.species} onChange={(v) => setNuevo({ ...nuevo, species: v })} placeholder={tx().phEspecie} />
-            <label className="check"><input type="checkbox" checked={!!nuevo.isShiny} onChange={(e) => setNuevo({ ...nuevo, isShiny: e.target.checked })} /> {tx().esShiny}</label>
-            <button className="btn mini secundario" disabled={!nuevo.species}
-              onClick={() => { setVitrina([...vitrina, nuevo]); setNuevo({}); }}>{tx().addVitrina}</button>
-          </div>
-        )}
-
-        <button className="btn mt-14" disabled={busy} onClick={() => run(async () => {
-          await api.saveProfile({ showcase: vitrina });
-          setGuardado("vitrina"); setTimeout(() => setGuardado(false), 3000);
-        })}>{tx().btnGuardarVitrina}</button>
-        {guardado === "vitrina" && <div className="mt-10"><Aviso tipo="verde">{tx().perfilGuardado}</Aviso></div>}
-      </div>
-
-      <div className="ficha mt-14">
         <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().tarjeta}</div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().tarjetaIntro}</p>
         {tarjeta && (
           <img src={tarjeta} alt={tx().tarjeta}
-            style={{ width: "100%", borderRadius: 12, border: "2px solid var(--tinta)", marginBottom: 10, display: "block" }} />
+            style={{ width: "100%", borderRadius: 12, border: "1px solid var(--linea)", marginBottom: 10, display: "block" }} />
         )}
         {errTarjeta && <div style={{ marginBottom: 10 }}><Aviso tipo="lacre">{tx().errorGenerico}</Aviso></div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
