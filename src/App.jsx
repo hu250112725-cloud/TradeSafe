@@ -1212,6 +1212,67 @@ function Infractores({ onBack }) {
   );
 }
 
+/* Barra de acción: el siguiente paso del intercambio, dentro del chat */
+function BarraAccion({ t, me, soyA, act, act2, busy, offer }) {
+  const T = tx();
+  const paso = ORDER.indexOf(t.state) + 1;
+  let contenido = null;
+
+  if (t.state === "proposal" && !soyA) {
+    contenido = { txt: T.tePropone(userById(t.aId)?.displayName ?? "—"), mio: true, botones: (
+      <>
+        <button className="btn mini" disabled={busy} onClick={() => act("accept")}>{T.btnAceptar}</button>
+        <button className="btn mini secundario" disabled={busy} onClick={() => act("decline")}>{T.btnRechazar}</button>
+      </>
+    ) };
+  } else if (t.state === "proposal") {
+    contenido = { txt: T.propuestaEnviada(userById(t.bId)?.displayName ?? "—"), mio: false };
+  } else if (t.state === "contract") {
+    const yoFirme = soyA ? t.signedA : t.signedB;
+    contenido = yoFirme
+      ? { txt: T.esperando, mio: false }
+      : { txt: T.btnFirmar, mio: true, botones: <button className="btn mini" disabled={busy} onClick={() => act("sign")}>{T.btnFirmar}</button> };
+  } else if (t.state === "pre_proof") {
+    const yoProbe = soyA ? t.proofA : t.proofB;
+    contenido = yoProbe
+      ? { txt: T.esperando, mio: false }
+      : { txt: T.avisoPreProof(t.code), mio: true, botones: (
+          <button className="btn mini" disabled={busy} onClick={async () => { const i = await pickImage(); if (i) act2("proof", null, i); }}>
+            {T.btnCaptura}
+          </button>
+        ) };
+  } else if (t.state === "in_progress") {
+    const yoEnt = soyA ? t.deliveredA : t.deliveredB;
+    contenido = yoEnt
+      ? { txt: T.esperando, mio: false }
+      : { txt: T.addAmigos, mio: true, botones: <button className="btn mini" disabled={busy} onClick={() => act("delivered")}>{T.btnEntregue}</button> };
+  } else if (t.state === "post_proof") {
+    const yoConf = soyA ? t.confirmedA : t.confirmedB;
+    contenido = yoConf
+      ? { txt: T.esperandoConfirm(userById(soyA ? t.bId : t.aId)?.displayName ?? "—"), mio: false }
+      : { txt: T.avisoPostProof, mio: true, botones: (
+          <button className="btn mini" disabled={busy} onClick={async () => { const i = await pickImage(); if (i) act2("confirm", null, i); }}>
+            {T.btnCapturaFinal}
+          </button>
+        ) };
+  } else if (t.state === "closed") {
+    contenido = { txt: T.cerrado + " 🎉", mio: false, cerrado: true };
+  }
+  if (!contenido) return null;
+
+  return (
+    <div className={`barra-accion ${contenido.mio ? "activa" : ""} ${contenido.cerrado ? "hecho" : ""}`}>
+      <div className="barra-accion-txt">
+        {!contenido.cerrado && (
+          <span className="eyebrow">{contenido.mio ? T.tuTurno : T.pasoDe(paso, 5)}</span>
+        )}
+        <span className="txt-s">{contenido.txt}</span>
+      </div>
+      {contenido.botones && <div className="barra-accion-btns">{contenido.botones}</div>}
+    </div>
+  );
+}
+
 /* Cabecera del chat: qué das y qué recibes, siempre a la vista */
 function CabeceraChat({ t, offer, soyA }) {
   const miItems = soyA ? (t.aItems?.length ? t.aItems : [t.aGive]) : null;
@@ -1267,6 +1328,10 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const [showDispute, setShowDispute] = useState(false);
   const [offsitePend, setOffsitePend] = useState(null);
   const [problemas, setProblemas] = useState(false);
+  const [modo, setModo] = useState("chat");
+  // El chat se abre en cuanto el intercambio está en marcha, o si hay mediación
+  const chatAbierto = ["in_progress", "post_proof"].includes(t.state)
+    || !!t.mediationRequested || !!t.mediatorId;
   const [editandoItems, setEditandoItems] = useState(false);
   const [itemsTxt, setItemsTxt] = useState("");
   const [notaMed, setNotaMed] = useState("");
@@ -1303,11 +1368,119 @@ function TradeView({ trade: id, me, refresh, onBack }) {
     }
   };
 
+  // Vista principal: chat a pantalla completa con el paso actual integrado
+  if (modo === "chat") {
+    return (
+      <div className="pantalla-chat">
+        <div className="barra-det" style={{ paddingBottom: 8 }}>
+          <button className="volver-ic" onClick={onBack} aria-label="←">‹</button>
+          <span className="barra-det-tit">{tx().chatTrade}</span>
+          <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setModo("detalles")} aria-label={tx().verDetalles}>⋯</button>
+        </div>
+
+        <button className="chat-cab-btn" onClick={() => setModo("detalles")}>
+          <CabeceraChat t={t} offer={offer} soyA={soyA} />
+          <span className="chat-cab-mas">›</span>
+        </button>
+
+        <div className="fila-entrenador" style={{ margin: "10px 0" }}>
+          {otro?.avatarId
+            ? <img className="ent-avatar" src={api.imageUrl(otro.avatarId)} alt="" />
+            : <span className="ent-avatar ent-inicial">{(otro?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <span className="ent-nombre" style={{ cursor: "default" }}>{otro?.displayName ?? "—"}</span>
+            <span className="txt-xs suave">
+              {otro?.lastSeen ? tx().visto(haceRato(otro.lastSeen)) : ""}
+              {otro?.timezone && horaEn(otro.timezone) ? ` · ${horaEn(otro.timezone)}` : ""}
+            </span>
+          </div>
+          <span style={{ marginLeft: "auto" }}><Sello code={t.code} /></span>
+        </div>
+
+        {(soyA ? t.friendB : t.friendA) && (
+          <div style={{ marginBottom: 10 }}><ClaveChip clave={soyA ? t.friendB : t.friendA} /></div>
+        )}
+
+        {err && <div style={{ marginBottom: 10 }}><Aviso tipo="lacre">{err}</Aviso></div>}
+
+        <div className="chat-mensajes" ref={cajaChat}>
+          {t.messages.length === 0 && (
+            <div className="chat-vacio txt-s"><span className="ic">💬</span>{tx().chatVacio}</div>
+          )}
+          {t.messages.map((m, i) => {
+            const previo = t.messages[i - 1];
+            const nuevoDia = !previo || !mismoDia(previo.at, m.at);
+            const esHoy = mismoDia(m.at, new Date());
+            const esAyer = mismoDia(m.at, Date.now() - 86400000);
+            if (m.system) {
+              return (
+                <span key={i} style={{ display: "contents" }}>
+                  {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
+                  <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
+                </span>
+              );
+            }
+            const mia = m.by === me.id;
+            const inicio = nuevoDia || !previo || previo.system || previo.by !== m.by
+              || new Date(m.at) - new Date(previo.at) > 300000;
+            const autor = mia ? null : userById(m.by);
+            return (
+              <span key={i} style={{ display: "contents" }}>
+                {nuevoDia && <div className="dia-sep">{esHoy ? tx().hoy : esAyer ? tx().ayer : diaCorto(m.at)}</div>}
+                <div className={`msg ${mia ? "mia" : "suya"} ${inicio ? "inicio-grupo" : ""}`}>
+                  {!mia && (inicio && autor?.avatarId
+                    ? <img className="msg-avatar" src={api.imageUrl(autor.avatarId)} alt="" />
+                    : <span className={`msg-avatar ${inicio ? "" : "hueco"}`}>{inicio ? "👤" : ""}</span>)}
+                  <div className={`burbuja ${mia ? "mia" : "suya"}`}>
+                    {m.text}
+                    <span className="hora-msg">{hora(m.at)}</span>
+                  </div>
+                </div>
+              </span>
+            );
+          })}
+        </div>
+
+        <BarraAccion t={t} me={me} soyA={soyA} act={act} act2={act2} busy={busy} offer={offer} />
+
+        {offsitePend && (
+          <div className="ficha" style={{ margin: "10px 0" }}>
+            <Aviso tipo="lacre">{tx().avisoOffsite}</Aviso>
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              <button className="btn mini secundario" onClick={() => setOffsitePend(null)}>{tx().btnCancelar}</button>
+              <button className="btn mini peligro" disabled={busy}
+                onClick={() => { run(() => api.sendMessage(t.id, offsitePend, true)); setOffsitePend(null); }}>
+                {tx().btnEnviarIgual}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {chatAbierto && (
+          <>
+            <div className="rapidas">
+              {[tx().rr1, tx().rr2, tx().rr3, tx().rr4].map((r) => (
+                <button key={r} className="rapida" disabled={busy}
+                  onClick={() => run(() => api.sendMessage(t.id, r))}>{r}</button>
+              ))}
+            </div>
+            <div className="chat-form">
+              <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
+              <button className="btn-enviar" disabled={busy || !msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button className="enlace-volver" onClick={onBack}>{tx().misTradesVolver}</button>
-        <Sello code={t.code} />
+      <div className="barra-det">
+        <button className="volver-ic" onClick={() => setModo("chat")} aria-label="←">‹</button>
+        <span className="barra-det-tit">{tx().detalleOferta}</span>
+        <span style={{ width: 34 }} />
       </div>
       <Via state={t.state} />
 
