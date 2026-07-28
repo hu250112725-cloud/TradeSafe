@@ -68,6 +68,11 @@ export async function takeMediation(id) { await call(`/trades/${id}/mediation/ta
 export async function closeMediation(id, note) { await call(`/trades/${id}/mediation/close`, { method: "POST", body: { note } }); await sync(); }
 export async function tradeAction(id, action, value, image) { await call(`/trades/${id}/action`, { method: "POST", body: { action, value, image } }); await sync(); }
 export async function sendMessage(id, text, confirmOffsite) { await call(`/trades/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
+export async function abrirDM(userId) { const r = await call("/dm", { method: "POST", body: { userId } }); await sync(); return r.id; }
+export async function enviarDM(id, text, confirmOffsite) { await call(`/dm/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
+export async function reportarDM(id, reason) { await call(`/dm/${id}/report`, { method: "POST", body: { reason } }); await sync(); }
+export async function bloquear(id) { await call(`/users/${id}/block`, { method: "POST" }); await sync(); }
+export async function desbloquear(id) { await call(`/users/${id}/block`, { method: "DELETE" }); await sync(); }
 export async function reportOffer(id, reason) { await call(`/offers/${id}/report`, { method: "POST", body: { reason } }); await sync(); }
 export async function staffRemoveOffer(id, reason) { await call(`/offers/${id}/remove`, { method: "POST", body: { reason } }); await sync(); }
 export async function openDispute(tradeId, claim) { await call("/disputes", { method: "POST", body: { tradeId, claim } }); await sync(); }

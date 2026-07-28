@@ -433,6 +433,23 @@ app.get("/api/state", authAny, async (req, res) => {
                ORDER BY o.id, o.created_at DESC LIMIT 30`, [me.id])
     : { rows: [] };
 
+  const dmR = await q(
+    `SELECT t.*, (SELECT count(*)::int FROM dm_messages m WHERE m.thread_id=t.id) AS n
+     FROM dm_threads t WHERE (t.a_id=$1 OR t.b_id=$1)
+     ORDER BY t.last_at DESC LIMIT 15`, [me.id]);
+  const dmIds = dmR.rows.map((t) => t.id);
+  const dmMsgR = dmIds.length
+    ? await q(`SELECT * FROM (
+                 SELECT *, row_number() OVER (PARTITION BY thread_id ORDER BY id DESC) AS n
+                 FROM dm_messages WHERE thread_id = ANY($1)
+               ) x WHERE x.n <= 40 ORDER BY id`, [dmIds])
+    : { rows: [] };
+  const bloqR = await q(`SELECT blocked_id FROM blocks WHERE blocker_id=$1`, [me.id]);
+  const dmRepR = esStaff
+    ? await q(`SELECT r.*, t.a_id, t.b_id FROM dm_reports r JOIN dm_threads t ON t.id=r.thread_id
+               WHERE r.status='open' ORDER BY r.created_at DESC LIMIT 50`)
+    : { rows: [] };
+
   const givR = await q(
     `SELECT g.*, (SELECT count(*)::int FROM giveaway_entries e WHERE e.giveaway_id=g.id) AS entries,
             EXISTS (SELECT 1 FROM giveaway_entries e WHERE e.giveaway_id=g.id AND e.user_id=$1) AS mine
@@ -499,6 +516,18 @@ app.get("/api/state", authAny, async (req, res) => {
       endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
     })),
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
+    dm: dmR.rows.map((t) => ({
+      id: t.id,
+      otherId: t.a_id === me.id ? t.b_id : t.a_id,
+      lastAt: t.last_at,
+      messages: dmMsgR.rows.filter((m) => m.thread_id === t.id)
+        .map((m) => ({ by: m.sender_id, system: !m.sender_id, kind: m.kind, text: m.body, at: m.created_at })),
+    })),
+    blocked: bloqR.rows.map((b) => b.blocked_id),
+    dmReports: dmRepR.rows.map((r) => ({
+      id: r.id, threadId: r.thread_id, byId: r.reporter_id,
+      aId: r.a_id, bId: r.b_id, reason: r.reason, at: r.created_at,
+    })),
     wishlist: wishR.rows.map((w) => ({ id: w.id, species: w.species, shinyOnly: w.shiny_only, note: w.note, at: w.created_at })),
     matches: matchesR.rows.map((m) => ({
       offerId: m.id, ownerId: m.owner_id, species: m.data?.species, isShiny: !!m.data?.isShiny,
@@ -894,6 +923,105 @@ app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
   if (hasOffsite(texto))
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
       [t.id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección. Es la táctica nº1 de los estafadores."]);
+  res.json({ ok: true });
+});
+
+/* ---------- Mensajes directos ----------
+   Protecciones: cuenta verificada, sin sanciones, respeto a los bloqueos,
+   límite de conversaciones nuevas y de mensajes, y los mismos filtros de
+   dinero real y contacto externo que en el chat de un intercambio. */
+const par = (x, y) => (x < y ? [x, y] : [y, x]);
+
+async function estaBloqueado(a, b) {
+  const r = await q(
+    `SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)`, [a, b]);
+  return r.rowCount > 0;
+}
+async function puedeEscribir(u) {
+  if (!u.verified) return "Verifica tu cuenta de HOME para usar los mensajes";
+  const s = await q(`SELECT 1 FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [u.id]);
+  if (s.rowCount) return "Las cuentas con sanción activa no pueden enviar mensajes";
+  return null;
+}
+
+const MAX_CONV_DIA = 10;
+app.post("/api/dm", auth, needsEmail, async (req, res) => {
+  const otro = String(req.body?.userId || "");
+  if (otro === req.me.id) return err(res, "conflict", 409, "No puedes escribirte a ti mismo");
+  const motivo = await puedeEscribir(req.me);
+  if (motivo) return err(res, "forbidden", 403, motivo);
+  const u = await q(`SELECT id, verified FROM users WHERE id=$1 AND status='active'`, [otro]);
+  if (!u.rowCount) return err(res, "not_found", 404, "Usuario no encontrado");
+  if (await estaBloqueado(req.me.id, otro)) return err(res, "forbidden", 403, "No puedes escribir a esta persona");
+
+  const [x, y] = par(req.me.id, otro);
+  const ya = await q(`SELECT id FROM dm_threads WHERE a_id=$1 AND b_id=$2`, [x, y]);
+  if (ya.rowCount) return res.json({ id: ya.rows[0].id });
+
+  const nuevas = await q(
+    `SELECT count(*)::int AS n FROM dm_threads WHERE (a_id=$1 OR b_id=$1) AND created_at > now() - interval '24 hours'`,
+    [req.me.id]);
+  if (nuevas.rows[0].n >= MAX_CONV_DIA)
+    return err(res, "too_many_attempts", 429, `Máximo ${MAX_CONV_DIA} conversaciones nuevas al día`);
+
+  const r = await q(`INSERT INTO dm_threads (a_id, b_id) VALUES ($1,$2) RETURNING id`, [x, y]);
+  await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+    [r.rows[0].id, "⚠ Este chat NO está protegido. Para intercambiar con garantías, usa una oferta del mercado."]);
+  res.status(201).json({ id: r.rows[0].id });
+});
+
+app.post("/api/dm/:id/message", auth, needsEmail, async (req, res) => {
+  const t = await q(`SELECT * FROM dm_threads WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [req.params.id, req.me.id]);
+  if (!t.rowCount) return err(res, "not_found", 404, "Conversación no encontrada");
+  const motivo = await puedeEscribir(req.me);
+  if (motivo) return err(res, "forbidden", 403, motivo);
+  const otro = t.rows[0].a_id === req.me.id ? t.rows[0].b_id : t.rows[0].a_id;
+  if (await estaBloqueado(req.me.id, otro)) return err(res, "forbidden", 403, "No puedes escribir a esta persona");
+
+  const texto = String(req.body?.text || "").trim().slice(0, 1000);
+  if (!texto) return err(res, "validation_error", 422, "Mensaje vacío");
+
+  const rec = await q(
+    `SELECT count(*)::int AS n FROM dm_messages WHERE sender_id=$1 AND created_at > now() - interval '1 minute'`,
+    [req.me.id]);
+  if (rec.rows[0].n >= 15) return err(res, "too_many_attempts", 429, "Vas demasiado rápido. Espera un momento.");
+
+  if (hasMoney(texto)) {
+    await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'lacre',$2)`,
+      [t.rows[0].id, "🚫 Mensaje bloqueado: ofertas con dinero real prohibidas y registradas."]);
+    await audit(req.me.id, "dm.money_blocked", t.rows[0].id, texto.slice(0, 200));
+    return res.json({ ok: true, blocked: true });
+  }
+  if (hasOffsite(texto) && !req.body?.confirmOffsite)
+    return err(res, "offsite_warning", 409, "Llevar el trato fuera de TradeSafe elimina tu protección y es la táctica nº1 de los estafadores. Confirma si aun así quieres enviarlo.");
+
+  await q(`INSERT INTO dm_messages (thread_id, sender_id, body) VALUES ($1,$2,$3)`, [t.rows[0].id, req.me.id, texto]);
+  await q(`UPDATE dm_threads SET last_at=now() WHERE id=$1`, [t.rows[0].id]);
+  if (hasOffsite(texto))
+    await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+      [t.rows[0].id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección."]);
+  res.json({ ok: true });
+});
+
+app.post("/api/dm/:id/report", auth, async (req, res) => {
+  const t = await q(`SELECT * FROM dm_threads WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [req.params.id, req.me.id]);
+  if (!t.rowCount) return err(res, "not_found", 404, "Conversación no encontrada");
+  const motivo = String(req.body?.reason || "").trim();
+  if (motivo.length < 10) return err(res, "validation_error", 422, "Explica brevemente el motivo (mínimo 10 caracteres)");
+  const ya = await q(`SELECT 1 FROM dm_reports WHERE thread_id=$1 AND reporter_id=$2 AND status='open'`, [t.rows[0].id, req.me.id]);
+  if (ya.rowCount) return err(res, "conflict", 409, "Ya reportaste esta conversación");
+  await q(`INSERT INTO dm_reports (thread_id, reporter_id, reason) VALUES ($1,$2,$3)`, [t.rows[0].id, req.me.id, motivo.slice(0, 500)]);
+  await audit(req.me.id, "dm.report", t.rows[0].id, motivo.slice(0, 200));
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/users/:id/block", auth, async (req, res) => {
+  if (req.params.id === req.me.id) return err(res, "conflict", 409, "No puedes bloquearte a ti mismo");
+  await q(`INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [req.me.id, req.params.id]);
+  res.json({ ok: true });
+});
+app.delete("/api/users/:id/block", auth, async (req, res) => {
+  await q(`DELETE FROM blocks WHERE blocker_id=$1 AND blocked_id=$2`, [req.me.id, req.params.id]);
   res.json({ ok: true });
 });
 
