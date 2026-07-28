@@ -34,3 +34,18 @@ export function spriteNormalAlt(nombre) {
 // El que corresponda según sea shiny o no
 export const sprite = (nombre, esShiny) => (esShiny ? spriteShiny(nombre) : spriteNormal(nombre));
 export const spriteAlt = (nombre, esShiny) => (esShiny ? spriteShinyAlt(nombre) : spriteNormalAlt(nombre));
+
+// Busca un nombre de Pokémon dentro de un texto libre ("Busco Dreepy shiny con HA").
+// Prueba primero combinaciones de 3 palabras (Iron Valiant, Tapu Koko) y luego de 1.
+export function detectarEspecie(texto) {
+  const t = String(texto || "");
+  const palabras = t.split(/[^\p{L}\p{N}'♀♂.\-]+/u).filter(Boolean);
+  for (let n = 3; n >= 1; n--) {
+    for (let i = 0; i + n <= palabras.length; i++) {
+      const cand = palabras.slice(i, i + n).join(" ");
+      if (dexId(cand)) return cand;
+    }
+  }
+  return null;
+}
+export const pideShiny = (texto) => /\bshiny\b|\bvariocolor\b|⭐|✨/i.test(String(texto || ""));

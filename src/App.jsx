@@ -2,7 +2,7 @@ import { useState, useEffect, useReducer, useRef } from "react";
 import * as api from "./api.js";
 import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
-import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt } from "./species.js";
+import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt, detectarEspecie, pideShiny } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
 
 /* ================= Piezas de UI ================= */
@@ -45,6 +45,15 @@ function Presencia({ lastSeen }) {
     : min < 1440 ? tx().haceHoras(Math.floor(min / 60))
     : tx().haceDias(Math.floor(min / 1440));
   return <span className="tag tenue">{tx().visto(t)}</span>;
+}
+
+/* "hace 9 min" / "hace 3 h" / "hace 2 d" */
+function haceRato(iso) {
+  const min = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return tx().ahoraMismo;
+  return min < 60 ? tx().haceMin(min)
+    : min < 1440 ? tx().haceHoras(Math.floor(min / 60))
+    : tx().haceDias(Math.floor(min / 1440));
 }
 
 // Sprite shiny del Pokémon (se oculta solo si no carga)
@@ -471,6 +480,53 @@ function Publicar({ refresh, done }) {
   );
 }
 
+/* Tarjeta del mercado: se ve de un vistazo qué se ofrece y qué se busca */
+function CartaOferta({ o, me, onAbrir }) {
+  const dueno = userById(o.ownerId);
+  const buscado = detectarEspecie(o.wants);
+  const buscadoShiny = pideShiny(o.wants);
+  const detalles = [o.nature, o.ivs?.length === 6 && (o.ivs.every((v) => v === 31) ? "6IV" : `${o.ivs.filter((v) => v === 31).length}IV`), o.ball]
+    .filter(Boolean).join(" · ");
+  const enLinea = dueno?.lastSeen && (Date.now() - new Date(dueno.lastSeen)) / 60000 < 3;
+  return (
+    <button className="ficha carta-oferta" style={{ marginBottom: 12 }} onClick={onAbrir}>
+      <div className="trueque">
+        <div className="lado">
+          <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
+          <div className="lado-txt">
+            <b className="nombre-pk">{o.species}{o.isShiny ? " ⭐" : ""}</b>
+            {detalles && <span className="txt-xs suave">{detalles}</span>}
+            {o.level && <span className="txt-xs suave">{tx().nv} {o.level}</span>}
+          </div>
+        </div>
+        <span className="flecha">⇄</span>
+        <div className="lado derecha">
+          <div className="lado-txt der">
+            <b className="nombre-pk">{buscado || tx().cualquierCosa}{buscado && buscadoShiny ? " ⭐" : ""}</b>
+            {buscado && <span className="txt-xs suave">{o.wants.length > 34 ? o.wants.slice(0, 33) + "…" : o.wants}</span>}
+          </div>
+          {buscado
+            ? <Sprite nombre={buscado} tam={62} shiny={buscadoShiny} halo />
+            : <span className="sprite-hueco">?</span>}
+        </div>
+      </div>
+      <div className="pie-oferta">
+        <span className="tags" style={{ gap: 5 }}>
+          {dueno?.avatarId && <img className="mini-avatar" src={api.imageUrl(dueno.avatarId)} alt="" />}
+          <b className="txt-s">{dueno?.displayName ?? "—"}</b>
+          {enLinea && <span className="punto-online" />}
+          <span className="txt-xs suave">{dueno?.trades ?? 0} {tx().trades}</span>
+          {dueno?.verified && <span className="txt-xs" style={{ color: "var(--verde)" }}>✓</span>}
+          {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
+          {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
+          {o.originImage && <span className="tag verde">📷</span>}
+        </span>
+        <span className="txt-xs suave">{haceRato(o.createdAt)}</span>
+      </div>
+    </button>
+  );
+}
+
 /* ================= Mercado ================= */
 function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   const [vista, setVista] = useState("ofertas");
@@ -485,8 +541,16 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
   const { run, busy, err } = useRun(refresh);
   const [orden, setOrden] = useState("reciente");
   const [tope, setTope] = useState(20);
+  const [verFiltros, setVerFiltros] = useState(false);
+  const [soloVerif, setSoloVerif] = useState(false);
+  const [soloPrueba, setSoloPrueba] = useState(false);
+  const [ocultarTrato, setOcultarTrato] = useState(false);
+  const nFiltros = [soloShiny, soloVerif, soloPrueba, ocultarTrato].filter(Boolean).length;
   const todas = api.snap.offers.filter((o) => o.status === "active")
     .filter((o) => !soloShiny || o.isShiny)
+    .filter((o) => !soloVerif || userById(o.ownerId)?.verified)
+    .filter((o) => !soloPrueba || o.originImage)
+    .filter((o) => !ocultarTrato || !o.inTrade)
     .filter((o) => !busca.trim() || (o.species + " " + o.wants).toLowerCase().includes(busca.trim().toLowerCase()));
   if (orden === "reputacion") {
     todas.sort((a, b) => {
@@ -612,38 +676,44 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto }) {
           </ol>
         </div>
       )}
-      <input className="buscador" value={busca} onChange={(e) => { setBusca(e.target.value); setTope(20); }} placeholder={tx().phBuscar} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-        <label className="check" style={{ margin: 0 }}>
-          <input type="checkbox" checked={soloShiny} onChange={(e) => { setSoloShiny(e.target.checked); setTope(20); }} /> {tx().soloShinys}
-        </label>
-        <select className="select-mini" value={orden} onChange={(e) => setOrden(e.target.value)}>
-          <option value="reciente">{tx().ordenReciente}</option>
-          <option value="reputacion">{tx().ordenReputacion}</option>
-        </select>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input className="buscador" style={{ marginBottom: 0 }} value={busca}
+          onChange={(e) => { setBusca(e.target.value); setTope(20); }} placeholder={tx().phBuscar} />
+        <button className={`btn mini ${nFiltros ? "" : "secundario"}`} style={{ whiteSpace: "nowrap" }}
+          onClick={() => setVerFiltros(!verFiltros)}>
+          ⚙ {tx().filtros}{nFiltros ? ` (${nFiltros})` : ""}
+        </button>
       </div>
+
+      {verFiltros && (
+        <div className="ficha" style={{ marginBottom: 12 }}>
+          <label className="check"><input type="checkbox" checked={soloShiny} onChange={(e) => { setSoloShiny(e.target.checked); setTope(20); }} /> {tx().soloShinys}</label>
+          <label className="check"><input type="checkbox" checked={soloVerif} onChange={(e) => { setSoloVerif(e.target.checked); setTope(20); }} /> {tx().soloVerificadosF}</label>
+          <label className="check"><input type="checkbox" checked={soloPrueba} onChange={(e) => { setSoloPrueba(e.target.checked); setTope(20); }} /> {tx().soloConPrueba}</label>
+          <label className="check"><input type="checkbox" checked={ocultarTrato} onChange={(e) => { setOcultarTrato(e.target.checked); setTope(20); }} /> {tx().ocultarEnTrato}</label>
+          <Campo label={tx().ordenar}>
+            <select value={orden} onChange={(e) => setOrden(e.target.value)}>
+              <option value="reciente">{tx().ordenReciente}</option>
+              <option value="reputacion">{tx().ordenReputacion}</option>
+            </select>
+          </Campo>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn mini secundario" style={{ flex: 1 }}
+              onClick={() => { setSoloShiny(false); setSoloVerif(false); setSoloPrueba(false); setOcultarTrato(false); setOrden("reciente"); }}>
+              {tx().limpiar}
+            </button>
+            <button className="btn mini" style={{ flex: 1 }} onClick={() => setVerFiltros(false)}>{tx().aplicar}</button>
+          </div>
+        </div>
+      )}
+
+      {todas.length > 0 && (
+        <div className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().nResultados(todas.length)}</div>
+      )}
       {offers.length === 0 ? (
         <Vacio icono="📦">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
       ) : offers.map((o) => (
-        <button key={o.id} className="ficha carta-oferta" style={{ marginBottom: 14 }} onClick={() => setOpen(o.id)}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <Sprite nombre={o.species} tam={74} shiny={o.isShiny} halo />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="tags">
-                <span className="h2">{o.species}</span>
-                {o.isShiny && <span className="tag oro">⭐ Shiny</span>}
-                {o.level && <span className="tag tenue">{tx().nv} {o.level}</span>}
-                {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
-                {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
-              </div>
-              <p className="txt-s suave mt-6" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tx().busca} {o.wants}
-              </p>
-              {o.originImage && <span className="tag verde mt-6" style={{ display: "inline-block" }}>{tx().conPrueba}</span>}
-            </div>
-          </div>
-          <div className="mt-10" style={{ borderTop: "1px solid #d8ded9", paddingTop: 9 }}><Rep userId={o.ownerId} /></div>
-        </button>
+        <CartaOferta key={o.id} o={o} me={me} onAbrir={() => setOpen(o.id)} />
       ))}
       {todas.length > offers.length && (
         <button className="btn secundario" onClick={() => setTope(tope + 20)}>

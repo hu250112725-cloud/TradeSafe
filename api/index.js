@@ -142,7 +142,10 @@ async function iniciarVerifEmail(u) {
   return envio.ok;
 }
 
-const MAX_ALTAS_DIA = 3;
+// Generoso a propósito: en redes móviles mucha gente comparte la misma IP,
+// así que un tope bajo bloquearía a usuarios legítimos. Frena la creación masiva
+// sin castigar a quien comparte conexión.
+const MAX_ALTAS_DIA = 10;
 app.post("/api/register", async (req, res) => {
   const huella = fp(req);
   const altas = await q(
