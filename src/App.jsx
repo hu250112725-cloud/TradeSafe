@@ -347,8 +347,110 @@ function CodigoRecuperacion({ code, onListo }) {
   );
 }
 
+/* Botones de acceso con Google y Facebook.
+   Solo aparecen si el servidor tiene configuradas esas credenciales. */
+function AccesoSocial({ cfg, onEntrar, onError, busy }) {
+  const [cargando, setCargando] = useState(null);
+  if (!cfg?.google && !cfg?.facebook) return null;
+
+  const cargarScript = (src, id) => new Promise((ok, no) => {
+    if (document.getElementById(id)) return ok();
+    const s = document.createElement("script");
+    s.src = src; s.id = id; s.async = true;
+    s.onload = ok; s.onerror = () => no(new Error("script"));
+    document.head.appendChild(s);
+  });
+
+  const google = async () => {
+    setCargando("google");
+    try {
+      await cargarScript("https://accounts.google.com/gsi/client", "gsi");
+      await new Promise((r) => setTimeout(r, 120));
+      window.google.accounts.id.initialize({
+        client_id: cfg.google,
+        callback: async ({ credential }) => {
+          try { onEntrar(await api.entrarGoogle(credential)); }
+          catch (e) { onError(tErr(e.message)); }
+          setCargando(null);
+        },
+      });
+      window.google.accounts.id.prompt((n) => {
+        // Si el aviso nativo no sale, se abre el diálogo completo
+        if (n.isNotDisplayed?.() || n.isSkippedMoment?.()) {
+          const div = document.getElementById("gbtn");
+          if (div) { window.google.accounts.id.renderButton(div, { theme: "outline", size: "large", width: 300 }); div.style.display = "block"; }
+          setCargando(null);
+        }
+      });
+    } catch { onError(tErr("Error de conexión con el servidor")); setCargando(null); }
+  };
+
+  const facebook = async () => {
+    setCargando("facebook");
+    try {
+      await cargarScript("https://connect.facebook.net/es_ES/sdk.js", "fbsdk");
+      window.FB.init({ appId: cfg.facebook, cookie: true, xfbml: false, version: "v19.0" });
+      window.FB.login(async (resp) => {
+        if (resp.authResponse?.accessToken) {
+          try { onEntrar(await api.entrarFacebook(resp.authResponse.accessToken)); }
+          catch (e) { onError(tErr(e.message)); }
+        }
+        setCargando(null);
+      }, { scope: "public_profile,email" });
+    } catch { onError(tErr("Error de conexión con el servidor")); setCargando(null); }
+  };
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      {cfg.google && (
+        <button className="btn-social" disabled={busy || cargando} onClick={google}>
+          <span className="ic-social">G</span>{cargando === "google" ? "…" : tx().conGoogle}
+        </button>
+      )}
+      <div id="gbtn" style={{ display: "none", margin: "10px 0" }} />
+      {cfg.facebook && (
+        <button className="btn-social fb" disabled={busy || cargando} onClick={facebook}>
+          <span className="ic-social">f</span>{cargando === "facebook" ? "…" : tx().conFacebook}
+        </button>
+      )}
+      <div className="separador-o"><span>{tx().oBien}</span></div>
+    </div>
+  );
+}
+
+/* Faltan entrenador y clave de amigo tras entrar con Google o Facebook */
+function CompletarPerfil({ onListo }) {
+  const [f, setF] = useState({});
+  const { run, busy, err } = useRun(() => {});
+  return (
+    <div style={{ paddingTop: 12 }}>
+      <div className="ficha">
+        <div className="h1">{tx().completarTitulo}</div>
+        <p className="txt-s suave mt-6">{tx().completarIntro}</p>
+        <div className="mt-14">
+          <Campo label={tx().lblEntrenador}>
+            <input value={f.trainer || ""} onChange={(e) => setF({ ...f, trainer: e.target.value })} placeholder={tx().phEntrenador} />
+          </Campo>
+          <Campo label={tx().lblClave}>
+            <input value={f.friendCode || ""} onChange={(e) => setF({ ...f, friendCode: e.target.value })}
+              placeholder={tx().phClave} autoCapitalize="characters" className="mono" />
+          </Campo>
+          <Campo label={tx().lblNombrePublico}>
+            <input value={f.name || ""} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={tx().phNombre} />
+          </Campo>
+          {err && <Aviso tipo="lacre">{err}</Aviso>}
+          <button className="btn mt-14" disabled={busy || !f.trainer || !f.friendCode}
+            onClick={() => run(async () => onListo(await api.completarPerfil(f)))}>
+            {busy ? "…" : tx().btnCompletar}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= Autenticación ================= */
-function AuthScreen({ refresh, hasUsers, onCodigo }) {
+function AuthScreen({ refresh, hasUsers, onCodigo, cfg, onCompletar }) {
   const [mode, setMode] = useState(hasUsers ? "login" : "setup");
   const [f, setF] = useState({});
   const { run, busy, err, setErr } = useRun(refresh);
@@ -378,6 +480,11 @@ function AuthScreen({ refresh, hasUsers, onCodigo }) {
               : mode === "recover" ? tx().recuperarIntro : tx().registerIntro}
           </p>
           <div className="mt-14">
+            {mode !== "recover" && (
+              <AccesoSocial cfg={cfg} busy={busy}
+                onEntrar={(falta) => { if (falta) onCompletar(); else refresh(); }}
+                onError={(m) => setErr(m)} />
+            )}
             {!["login", "recover"].includes(mode) && (
               <>
                 <Campo label={tx().lblNombre}><input value={f.name || ""} onChange={set("name")} placeholder={tx().phNombre} /></Campo>
@@ -2597,6 +2704,8 @@ export default function App() {
   };
   const [phase, setPhase] = useState("cargando"); // cargando | sin-conexion | listo
   const [hasUsers, setHasUsers] = useState(true);
+  const [cfg, setCfg] = useState(null);
+  const [completar, setCompletar] = useState(false);
 
   useEffect(() => {
     api.getStats().then(setStats).catch(() => { /* opcional */ });
@@ -2609,6 +2718,7 @@ export default function App() {
         const b = await api.bootstrap();
         if (!vivo) return;
         setHasUsers(b.hasUsers);
+        setCfg({ google: b.google, facebook: b.facebook });
         if (api.getToken()) { try { await api.sync(); } catch { /* sesión caducada */ } }
         setPhase("listo");
       } catch {
@@ -2723,13 +2833,16 @@ export default function App() {
           <Vacio icono="◈">{tx().conectando}</Vacio>
         ) : phase === "sin-conexion" ? (
           <Vacio icono="⚠">{tx().sinConexion1}<br />{tx().sinConexion2} <b className="mono">DATABASE_URL</b> · <b className="mono">JWT_SECRET</b> {tx().enVercel}</Vacio>
+        ) : completar ? (
+          <CompletarPerfil onListo={(rec) => { setCompletar(false); setCodigoNuevo(rec); }} />
         ) : codigoNuevo ? (
           <div style={{ paddingTop: 12 }}>
             <CodigoRecuperacion code={codigoNuevo} onListo={() => { setCodigoNuevo(null); refresh(); }} />
           </div>
         ) : !me ? (
           <>
-            <AuthScreen refresh={refresh} hasUsers={hasUsers} onCodigo={setCodigoNuevo} />
+            <AuthScreen refresh={refresh} hasUsers={hasUsers} onCodigo={setCodigoNuevo} cfg={cfg}
+              onCompletar={() => setCompletar(true)} />
             {stats && stats.usuarios > 0 && (
               <div className="ficha mt-14">
                 <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().statsTitulo}</div>

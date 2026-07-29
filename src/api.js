@@ -32,6 +32,9 @@ async function call(path, opts = {}) {
 }
 
 export const bootstrap = () => call("/bootstrap");
+export async function entrarGoogle(credential) { const r = await call("/auth/google", { method: "POST", body: { credential } }); setToken(r.token); await sync(); return r.needsProfile; }
+export async function entrarFacebook(accessToken) { const r = await call("/auth/facebook", { method: "POST", body: { accessToken } }); setToken(r.token); await sync(); return r.needsProfile; }
+export async function completarPerfil(d) { const r = await call("/auth/complete", { method: "POST", body: d }); await sync(); return r.recovery; }
 export async function setup(d) { const r = await call("/setup", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }
 export async function register(d) { const r = await call("/register", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }
 export async function recover(d) { const r = await call("/recover", { method: "POST", body: d }); setToken(r.token); await sync(); return r.recovery; }

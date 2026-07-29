@@ -8,6 +8,7 @@ import { q } from "../lib/db.js";
 import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
 import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
 import { certHtml } from "../lib/cert.js";
+import { verificarGoogle, verificarFacebook, googleActivo, facebookActivo } from "../lib/social.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -49,6 +50,11 @@ async function authAny(req, res, next) {
   }
 }
 
+// Quien entra con Google o Facebook no puede operar hasta dar su nombre de
+// entrenador y su clave de amigo: sin eso no se puede intercambiar.
+const needsPerfil = (req, res, next) => (req.me.trainer_name && req.me.friend_code) ? next()
+  : err(res, "profile_incomplete", 403, "Completa tu nombre de entrenador y tu clave de amigo para poder operar");
+
 const needsEmail = (req, res, next) => req.me.email_verified !== false ? next()
   : err(res, "email_unverified", 403, "Confirma tu email para poder operar (revisa tu bandeja de entrada)");
 
@@ -72,7 +78,11 @@ const audit = (actorId, action, target, reason) =>
 /* ---------- Bootstrap / registro / login ---------- */
 app.get("/api/bootstrap", async (_req, res) => {
   const r = await q("SELECT count(*)::int AS n FROM users");
-  res.json({ hasUsers: r.rows[0].n > 0 });
+  res.json({
+    hasUsers: r.rows[0].n > 0,
+    google: googleActivo() ? process.env.GOOGLE_CLIENT_ID : null,
+    facebook: facebookActivo() ? process.env.FACEBOOK_APP_ID : null,
+  });
 });
 
 async function createUser({ name, trainer, email, pass, friendCode }, role, verified, signupFp) {
@@ -182,6 +192,90 @@ app.post("/api/email/resend", authAny, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Acceso con Google o Facebook ----------
+   Si la cuenta ya existe (por proveedor o por email), entra directamente.
+   Si es nueva, se crea a medias y hay que completar entrenador y clave de amigo. */
+async function entrarConProveedor(res, req, { campo, valor, email, nombre }) {
+  let u = (await q(`SELECT * FROM users WHERE ${campo}=$1`, [valor])).rows[0];
+
+  if (!u && email) {
+    // Enlazar con una cuenta existente que use el mismo correo
+    const porEmail = (await q(`SELECT * FROM users WHERE email=$1`, [email])).rows[0];
+    if (porEmail) {
+      if (porEmail.status === "deleted") return err(res, "unauthorized", 401, "Credenciales incorrectas");
+      await q(`UPDATE users SET ${campo}=$2 WHERE id=$1`, [porEmail.id, valor]);
+      u = porEmail;
+    }
+  }
+
+  if (!u) {
+    const huella = fp(req);
+    const altas = await q(
+      `SELECT count(*)::int AS n FROM users WHERE signup_fp=$1 AND created_at > now() - interval '24 hours'`, [huella]);
+    if (altas.rows[0].n >= MAX_ALTAS_DIA)
+      return err(res, "too_many_attempts", 429, "Se han creado demasiadas cuentas desde aquí hoy. Inténtalo mañana.");
+
+    // Nombre público libre, a partir del que venga del proveedor
+    let base = String(nombre || "Entrenador").trim().slice(0, 24) || "Entrenador";
+    if (base.length < 3) base = "Entrenador";
+    let nom = base, i = 1;
+    while ((await q(`SELECT 1 FROM users WHERE display_name=$1`, [nom])).rowCount) nom = `${base} ${++i}`;
+
+    const correo = email || `${campo}-${valor}@sin-correo.local`;
+    const r = await q(
+      `INSERT INTO users (email, pass_hash, display_name, trainer_name, role, verified, email_verified, signup_fp, ${campo})
+       VALUES ($1,NULL,$2,'',$3,false,true,$4,$5) RETURNING *`,
+      [correo, nom, "user", huella, valor]);
+    u = r.rows[0];
+    await audit(u.id, "signup." + campo, u.id, "Alta con proveedor externo");
+  }
+
+  if (u.status === "suspended") return err(res, "forbidden", 403, "Cuenta suspendida por moderación");
+  if (u.status === "deleted") return err(res, "unauthorized", 401, "Credenciales incorrectas");
+  // Sin nombre de entrenador o sin clave de amigo, falta completar el perfil
+  const completo = !!(u.trainer_name && u.friend_code);
+  res.json({ token: token(u), needsProfile: !completo });
+}
+
+app.post("/api/auth/google", async (req, res) => {
+  try {
+    const g = await verificarGoogle(String(req.body?.credential || ""));
+    return entrarConProveedor(res, req, { campo: "google_sub", valor: g.sub, email: g.email, nombre: g.nombre });
+  } catch (e) { return err(res, "unauthorized", 401, typeof e === "string" ? e : "No se pudo entrar con Google"); }
+});
+
+app.post("/api/auth/facebook", async (req, res) => {
+  try {
+    const f = await verificarFacebook(String(req.body?.accessToken || ""));
+    return entrarConProveedor(res, req, { campo: "facebook_id", valor: f.id, email: f.email, nombre: f.nombre });
+  } catch (e) { return err(res, "unauthorized", 401, typeof e === "string" ? e : "No se pudo entrar con Facebook"); }
+});
+
+// Completar los datos que el proveedor no da: entrenador y clave de amigo
+app.post("/api/auth/complete", auth, async (req, res) => {
+  if (req.me.trainer_name && req.me.friend_code)
+    return err(res, "conflict", 409, "Tu perfil ya está completo");
+  const trainer = String(req.body?.trainer || "").trim();
+  if (!trainer) return err(res, "validation_error", 422, "Falta tu nombre de entrenador de HOME");
+  const limpio = String(req.body?.friendCode || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (limpio.length !== 12)
+    return err(res, "validation_error", 422, "La clave de amigo debe tener 12 caracteres (la de HOME, p. ej. ZVNUKXJHKHHM, o la de Switch de 12 dígitos)");
+  const fc = /^\d{12}$/.test(limpio)
+    ? "SW-" + limpio.slice(0, 4) + "-" + limpio.slice(4, 8) + "-" + limpio.slice(8, 12)
+    : limpio;
+  const nombre = String(req.body?.name || "").trim();
+  if (nombre && nombre.length < 3) return err(res, "validation_error", 422, "El nombre público necesita al menos 3 caracteres");
+  try {
+    await q(`UPDATE users SET trainer_name=$2, friend_code=$3, display_name=COALESCE(NULLIF($4,''), display_name) WHERE id=$1`,
+      [req.me.id, trainer, fc, nombre]);
+  } catch (e) {
+    if (e && e.code === "23505") return err(res, "conflict", 409, "Email o nombre ya en uso");
+    throw e;
+  }
+  const recovery = await asignarRecuperacion(req.me.id);
+  res.json({ ok: true, recovery });
+});
+
 app.post("/api/login", async (req, res) => {
   const { email, pass } = req.body || {};
   const mail = String(email || "").trim().toLowerCase();
@@ -192,7 +286,7 @@ app.post("/api/login", async (req, res) => {
   if (intentos.rows[0].n >= 8)
     return err(res, "too_many_attempts", 429, "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.");
   const r = await q("SELECT * FROM users WHERE email=$1", [mail]);
-  if (!r.rowCount || !(await bcrypt.compare(pass || "", r.rows[0].pass_hash))) {
+  if (!r.rowCount || !r.rows[0].pass_hash || !(await bcrypt.compare(pass || "", r.rows[0].pass_hash))) {
     await q(`INSERT INTO login_attempts (email, fp) VALUES ($1,$2)`, [mail, huella]);
     await q(`DELETE FROM login_attempts WHERE at < now() - interval '1 day'`);
     return err(res, "unauthorized", 401, "Credenciales incorrectas");
@@ -234,7 +328,8 @@ app.post("/api/recover", async (req, res) => {
 // Regenerar el código estando dentro (por si se perdió)
 app.post("/api/me/recovery", auth, async (req, res) => {
   const pass = String(req.body?.pass || "");
-  if (!(await bcrypt.compare(pass, req.me.pass_hash)))
+  // Quien entró con Google o Facebook no tiene contraseña: le basta con su sesión
+  if (req.me.pass_hash && !(await bcrypt.compare(pass, req.me.pass_hash)))
     return err(res, "unauthorized", 401, "Contraseña incorrecta");
   const recovery = await asignarRecuperacion(req.me.id);
   await audit(req.me.id, "account.recovery_reissued", req.me.id, "Código de recuperación regenerado");
@@ -562,7 +657,7 @@ app.get("/api/state", authAny, async (req, res) => {
 
 /* ---------- Ofertas ---------- */
 const MAX_OFERTAS = 20;
-app.post("/api/offers", auth, needsEmail, async (req, res) => {
+app.post("/api/offers", auth, needsEmail, needsPerfil, async (req, res) => {
   const b = req.body || {};
   const n = await q(`SELECT count(*)::int AS n FROM offers WHERE owner_id=$1 AND status='active'`, [req.me.id]);
   if (n.rows[0].n >= MAX_OFERTAS)
@@ -798,7 +893,7 @@ function normalizarItems(entrada) {
   return lista;
 }
 
-app.post("/api/trades", auth, needsEmail, async (req, res) => {
+app.post("/api/trades", auth, needsEmail, needsPerfil, async (req, res) => {
   const { offerId, give, items } = req.body || {};
   const lista = normalizarItems(items ?? give);
   if (!lista.length) return err(res, "validation_error", 422, "Describe qué ofreces tú");
@@ -835,7 +930,7 @@ app.post("/api/trades/:id/items", auth, needsEmail, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
+app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, res) => {
   const t = await getTrade(req.params.id);
   if (!t || (t.a_id !== req.me.id && t.b_id !== req.me.id)) return err(res, "not_found", 404, "Intercambio no encontrado");
   const soyA = t.a_id === req.me.id;
@@ -920,7 +1015,7 @@ app.post("/api/trades/:id/action", auth, needsEmail, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/trades/:id/message", auth, needsEmail, async (req, res) => {
+app.post("/api/trades/:id/message", auth, needsEmail, needsPerfil, async (req, res) => {
   const t = await getTrade(req.params.id);
   const esParte = t && (t.a_id === req.me.id || t.b_id === req.me.id);
   const soyMediador = t && t.mediator_id === req.me.id;
@@ -971,7 +1066,7 @@ function fichaPokemon(b) {
   };
 }
 
-app.post("/api/pokemon", auth, needsEmail, async (req, res) => {
+app.post("/api/pokemon", auth, needsEmail, needsPerfil, async (req, res) => {
   const n = await q(`SELECT count(*)::int AS n FROM pokemon WHERE owner_id=$1 AND status <> 'traded'`, [req.me.id]);
   if (n.rows[0].n >= MAX_POKEMON)
     return err(res, "limit_reached", 429, `Tu inventario admite ${MAX_POKEMON} Pokémon`);
@@ -1029,7 +1124,7 @@ app.post("/api/pokemon/:id/featured", auth, async (req, res) => {
 });
 
 /* Publicar en el mercado directamente desde el inventario */
-app.post("/api/pokemon/:id/list", auth, needsEmail, async (req, res) => {
+app.post("/api/pokemon/:id/list", auth, needsEmail, needsPerfil, async (req, res) => {
   const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
   if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
   if (p.rows[0].status !== "owned") return err(res, "state_invalid", 409, "Este Pokémon ya está publicado o intercambiado");
@@ -1073,7 +1168,7 @@ async function puedeEscribir(u) {
 }
 
 const MAX_CONV_DIA = 10;
-app.post("/api/dm", auth, needsEmail, async (req, res) => {
+app.post("/api/dm", auth, needsEmail, needsPerfil, async (req, res) => {
   const otro = String(req.body?.userId || "");
   if (otro === req.me.id) return err(res, "conflict", 409, "No puedes escribirte a ti mismo");
   const motivo = await puedeEscribir(req.me);
@@ -1098,7 +1193,7 @@ app.post("/api/dm", auth, needsEmail, async (req, res) => {
   res.status(201).json({ id: r.rows[0].id });
 });
 
-app.post("/api/dm/:id/message", auth, needsEmail, async (req, res) => {
+app.post("/api/dm/:id/message", auth, needsEmail, needsPerfil, async (req, res) => {
   const t = await q(`SELECT * FROM dm_threads WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [req.params.id, req.me.id]);
   if (!t.rowCount) return err(res, "not_found", 404, "Conversación no encontrada");
   const motivo = await puedeEscribir(req.me);
@@ -1197,7 +1292,7 @@ app.post("/api/trades/:id/mediation/close", auth, async (req, res) => {
 });
 
 /* ---------- Disputas ---------- */
-app.post("/api/disputes", auth, needsEmail, async (req, res) => {
+app.post("/api/disputes", auth, needsEmail, needsPerfil, async (req, res) => {
   const { tradeId, claim } = req.body || {};
   if (!claim || claim.trim().length < 20) return err(res, "validation_error", 422, "Describe lo ocurrido (mínimo 20 caracteres)");
   const t = await getTrade(tradeId);
