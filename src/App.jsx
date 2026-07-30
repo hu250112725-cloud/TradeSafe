@@ -886,9 +886,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <p className="txt-xs suave mt-10">⚠ {tx().avisoCuentaNueva}</p>
           )}
         </div>
-        {!me ? (
-          <button className="fab" onClick={onPideCuenta}>{tx().entrarPara}</button>
-        ) : o.ownerId === me?.id ? (
+        {!me ? null : o.ownerId === me?.id ? (
           <button className="btn peligro mt-14" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setOpen(null); })}>
             {tx().retirarOferta}
           </button>
@@ -2824,7 +2822,8 @@ export default function App() {
               </button>
             )}
             {!me && phase === "listo" && !mostrarAcceso && (
-              <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().entrar}</button>
+              <button className="enlace-volver" style={{ fontSize: 13, fontWeight: 700 }}
+                onClick={() => setMostrarAcceso(true)}>{tx().yaTengo}</button>
             )}
             {me && phase === "listo" && (
               <button className="avatar-cab" aria-label={tx().irAlPerfil}
@@ -2888,10 +2887,7 @@ export default function App() {
           </>
         ) : !me ? (
           <>
-            <div className="franja-invitado">
-              <span>{tx().invitado}</span>
-              <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
-            </div>
+            <div className="linea-invitado">{tx().invitado}</div>
             {pideCuenta && (
               <PideCuenta onCrear={() => { setPideCuenta(false); setMostrarAcceso(true); }}
                 onCerrar={() => setPideCuenta(false)} />
@@ -2934,8 +2930,9 @@ export default function App() {
 
       {!me && !mostrarAcceso && phase === "listo" && (
         <nav className="tabbar">
-          <div className="tabbar-inner" style={{ padding: 8 }}>
-            <button className="btn mini" style={{ flex: 1 }} onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
+          <div className="tabbar-inner barra-invitado">
+            <span className="txt-xs suave">{tx().entrarPara}</span>
+            <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
           </div>
         </nav>
       )}
