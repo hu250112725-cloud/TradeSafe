@@ -449,6 +449,20 @@ function CompletarPerfil({ onListo }) {
   );
 }
 
+/* Se muestra cuando un invitado intenta algo que requiere cuenta */
+function PideCuenta({ onCrear, onCerrar }) {
+  return (
+    <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)" }}>
+      <div className="h2">{tx().necesitaCuenta}</div>
+      <p className="txt-s suave mt-6">{tx().necesitaCuentaTxt}</p>
+      <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+        <button className="btn mini" onClick={onCrear}>{tx().crearGratis}</button>
+        <button className="btn mini secundario" onClick={onCerrar}>{tx().soloMirar}</button>
+      </div>
+    </div>
+  );
+}
+
 /* ================= Autenticación ================= */
 function AuthScreen({ refresh, hasUsers, onCodigo, cfg, onCompletar }) {
   const [mode, setMode] = useState(hasUsers ? "login" : "setup");
@@ -732,7 +746,7 @@ function CartaOferta({ o, me, onAbrir }) {
           {enLinea && <span className="punto-online" />}
           {dueno?.verified && <span className="tag verde">✓ {tx().verificado.replace("✓ ", "")}</span>}
           <span className="tag tenue">{dueno?.trades ?? 0} {tx().trades}</span>
-          {o.ownerId === me.id && <span className="tag verde">{tx().tuya}</span>}
+          {o.ownerId === me?.id && <span className="tag verde">{tx().tuya}</span>}
           {o.inTrade && <span className="tag oro">{tx().enTrato}</span>}
           {o.originImage && <span className="tag verde">◎</span>}
         </span>
@@ -743,7 +757,7 @@ function CartaOferta({ o, me, onAbrir }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat, stats }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat, stats, onPideCuenta }) {
   const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
@@ -872,7 +886,9 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <p className="txt-xs suave mt-10">⚠ {tx().avisoCuentaNueva}</p>
           )}
         </div>
-        {o.ownerId === me.id ? (
+        {!me ? (
+          <button className="fab" onClick={onPideCuenta}>{tx().entrarPara}</button>
+        ) : o.ownerId === me?.id ? (
           <button className="btn peligro mt-14" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setOpen(null); })}>
             {tx().retirarOferta}
           </button>
@@ -893,7 +909,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         ) : (
           <button className="fab" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
         )}
-        {o.ownerId !== me.id && (reportado ? (
+        {me && o.ownerId !== me?.id && (reportado ? (
           <div className="mt-14"><Aviso tipo="verde">{tx().reporteEnviado}</Aviso></div>
         ) : reportando ? (
           <div className="ficha mt-14">
@@ -914,16 +930,16 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         <h1 className="h1">{vista === "publicar" ? tx().publicarOferta : vista === "deseos" ? tx().deseosTitulo
               : vista === "comunidad" ? tx().tabComunidad : tx().mercado}</h1>
         <button className={`btn mini ${vista === "publicar" ? "secundario" : ""}`}
-          onClick={() => setVista(vista === "publicar" ? "ofertas" : "publicar")}>
+          onClick={() => { if (!me) return onPideCuenta(); setVista(vista === "publicar" ? "ofertas" : "publicar"); }}>
           {vista === "publicar" ? tx().btnCancelar : tx().nuevaOferta}
         </button>
       </div>
       <div className="tags" style={{ marginBottom: 14 }}>
         <button className={`btn mini ${vista === "ofertas" ? "" : "secundario"}`} onClick={() => setVista("ofertas")}>{tx().verOfertas}</button>
-        <button className={`btn mini ${vista === "deseos" ? "" : "secundario"}`} onClick={() => setVista("deseos")}>
+        <button className={`btn mini ${vista === "deseos" ? "" : "secundario"}`} onClick={() => { if (!me) return onPideCuenta(); setVista("deseos"); }}>
           {tx().tabDeseos}{(api.snap.matches?.length || 0) > 0 ? " ●" : ""}
         </button>
-        <button className={`btn mini ${vista === "comunidad" ? "" : "secundario"}`} onClick={() => setVista("comunidad")}>
+        <button className={`btn mini ${vista === "comunidad" ? "" : "secundario"}`} onClick={() => { if (!me) return onPideCuenta(); setVista("comunidad"); }}>
           {tx().tabComunidad}
         </button>
       </div>
@@ -1088,7 +1104,7 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                 {g.status === "open" ? (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span className="txt-xs">{tx().terminaEl} {fecha(g.endsAt)}</span>
-                    {g.hostId !== me.id && (g.mine
+                    {g.hostId !== me?.id && (g.mine
                       ? <span className="tag verde">{tx().yaParticipas}</span>
                       : <button className="btn mini" disabled={busy} onClick={() => run(() => api.enterGiveaway(g.id))}>{tx().btnParticipar}</button>)}
                     {esStaff && (
@@ -1171,7 +1187,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
               <Aviso tipo={m.kind}>{tSys(m.text)}</Aviso>
             </span>
           );
-          const mia = m.by === me.id;
+          const mia = m.by === me?.id;
           const inicio = nuevoDia || !previo || previo.system || previo.by !== m.by
             || new Date(m.at) - new Date(previo.at) > 300000;
           return (
@@ -2706,6 +2722,8 @@ export default function App() {
   const [hasUsers, setHasUsers] = useState(true);
   const [cfg, setCfg] = useState(null);
   const [completar, setCompletar] = useState(false);
+  const [mostrarAcceso, setMostrarAcceso] = useState(false);
+  const [pideCuenta, setPideCuenta] = useState(false);
 
   useEffect(() => {
     api.getStats().then(setStats).catch(() => { /* opcional */ });
@@ -2720,13 +2738,18 @@ export default function App() {
         setHasUsers(b.hasUsers);
         setCfg({ google: b.google, facebook: b.facebook });
         if (api.getToken()) { try { await api.sync(); } catch { /* sesión caducada */ } }
+        if (!api.snap?.me) { try { await api.verPublico(); } catch { /* sin escaparate */ } }
         setPhase("listo");
       } catch {
         if (vivo) setPhase("sin-conexion");
       }
     })();
     const iv = setInterval(async () => {
-      if (api.getToken()) { try { await api.sync(); force(); } catch { /* red */ } }
+      try {
+        if (api.getToken()) await api.sync();
+        else if (!mostrarAcceso) await api.verPublico();
+        force();
+      } catch { /* red */ }
     }, 8000);
     return () => { vivo = false; clearInterval(iv); };
   }, []);
@@ -2800,6 +2823,9 @@ export default function App() {
                 )}
               </button>
             )}
+            {!me && phase === "listo" && !mostrarAcceso && (
+              <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().entrar}</button>
+            )}
             {me && phase === "listo" && (
               <button className="avatar-cab" aria-label={tx().irAlPerfil}
                 onClick={() => { setTab("perfil"); setVerInfractores(false); setVerFicha(null); }}>
@@ -2839,8 +2865,13 @@ export default function App() {
           <div style={{ paddingTop: 12 }}>
             <CodigoRecuperacion code={codigoNuevo} onListo={() => { setCodigoNuevo(null); refresh(); }} />
           </div>
-        ) : !me ? (
+        ) : !me && mostrarAcceso ? (
           <>
+            <div className="barra-det">
+              <button className="volver-ic" onClick={() => setMostrarAcceso(false)} aria-label="←">‹</button>
+              <span className="barra-det-tit">{tx().entrar}</span>
+              <span style={{ width: 34 }} />
+            </div>
             <AuthScreen refresh={refresh} hasUsers={hasUsers} onCodigo={setCodigoNuevo} cfg={cfg}
               onCompletar={() => setCompletar(true)} />
             {stats && stats.usuarios > 0 && (
@@ -2854,6 +2885,20 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        ) : !me ? (
+          <>
+            <div className="franja-invitado">
+              <span>{tx().invitado}</span>
+              <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
+            </div>
+            {pideCuenta && (
+              <PideCuenta onCrear={() => { setPideCuenta(false); setMostrarAcceso(true); }}
+                onCerrar={() => setPideCuenta(false)} />
+            )}
+            <Mercado me={null} refresh={refresh} onFicha={setVerFicha} stats={stats}
+              onOffenders={() => setPideCuenta(true)} onPideCuenta={() => setPideCuenta(true)}
+              abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
           </>
         ) : me.status === "suspended" ? (
           <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} />
@@ -2886,6 +2931,14 @@ export default function App() {
           <Staff me={me} refresh={refresh} />
         )}
       </main>
+
+      {!me && !mostrarAcceso && phase === "listo" && (
+        <nav className="tabbar">
+          <div className="tabbar-inner" style={{ padding: 8 }}>
+            <button className="btn mini" style={{ flex: 1 }} onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
+          </div>
+        </nav>
+      )}
 
       {me && phase === "listo" && (
         <nav className="tabbar">

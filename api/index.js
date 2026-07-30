@@ -358,27 +358,35 @@ async function saveImage(ownerId, tradeId, kind, dataUrl) {
 }
 
 // Sirve una imagen; acepta el token por cabecera o por ?token= (para <img>)
+function enviarImagen(res, img) {
+  const m = img.data.match(IMG_RE);
+  const b64 = img.data.slice(img.data.indexOf(",") + 1);
+  res.setHeader("Content-Type", "image/" + (m[1] === "jpg" ? "jpeg" : m[1]));
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(Buffer.from(b64, "base64"));
+}
+
 app.get("/api/images/:id", async (req, res) => {
+  const r = await q(`SELECT * FROM images WHERE id=$1`, [req.params.id]);
+  if (!r.rowCount) return err(res, "not_found", 404, "Imagen no encontrada");
+  const img = r.rows[0];
+  // Avatares y capturas de origen son parte del escaparate: visibles sin cuenta.
+  // Las pruebas de un intercambio y las verificaciones siguen protegidas.
+  if (["avatar", "origin"].includes(img.kind)) return enviarImagen(res, img);
+
   const raw = (req.headers.authorization || "").startsWith("Bearer ")
     ? req.headers.authorization.slice(7) : String(req.query.token || "");
   let viewer;
   try { viewer = jwt.verify(raw, SECRET); } catch { return err(res, "unauthorized", 401, "Sesión requerida"); }
-  const r = await q(`SELECT * FROM images WHERE id=$1`, [req.params.id]);
-  if (!r.rowCount) return err(res, "not_found", 404, "Imagen no encontrada");
-  const img = r.rows[0];
   const uR = await q(`SELECT role FROM users WHERE id=$1`, [viewer.sub]);
   const esStaff = ["moderator", "admin"].includes(uR.rows[0]?.role);
-  let ok = esStaff || img.owner_id === viewer.sub || ["origin", "avatar"].includes(img.kind);
+  let ok = esStaff || img.owner_id === viewer.sub;
   if (!ok && img.trade_id) {
     const t = await q(`SELECT 1 FROM trades WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [img.trade_id, viewer.sub]);
     ok = t.rowCount > 0;
   }
   if (!ok) return err(res, "forbidden", 403, "Sin acceso a esta imagen");
-  const m = img.data.match(IMG_RE);
-  const b64 = img.data.slice(img.data.indexOf(",") + 1);
-  res.setHeader("Content-Type", "image/" + (m[1] === "jpg" ? "jpeg" : m[1]));
-  res.setHeader("Cache-Control", "private, max-age=3600");
-  res.send(Buffer.from(b64, "base64"));
+  return enviarImagen(res, img);
 });
 
 /* ---------- Verificación de cuenta HOME ---------- */
@@ -759,6 +767,47 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
     } catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen no válida"); }
   }
   res.json({ ok: true });
+});
+
+/* ---------- Escaparate público (sin cuenta) ----------
+   Solo lo imprescindible para mirar el mercado. Nunca salen correos,
+   claves de amigo, intercambios, mensajes ni datos de moderación. */
+app.get("/api/public", async (_req, res) => {
+  await retirarOfertasCerradas().catch(() => {});
+  const ofertas = await q(
+    `SELECT o.id, o.owner_id, o.data, o.created_at,
+       EXISTS (SELECT 1 FROM trades t WHERE t.offer_id = o.id
+               AND t.state NOT IN ('closed','cancelled')) AS in_trade
+     FROM offers o WHERE o.status='active'
+     ORDER BY o.created_at DESC LIMIT 120`);
+  const ids = [...new Set(ofertas.rows.map((o) => o.owner_id))];
+  const duenos = ids.length ? await q(`
+    SELECT u.id, u.display_name, u.avatar_id, u.verified, u.created_at, u.last_seen, u.availability,
+      (SELECT count(*)::int FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)) AS trades_done,
+      (SELECT round(avg(CASE WHEN t.a_id=u.id THEN (t.flags->>'ratingForA')::numeric ELSE (t.flags->>'ratingForB')::numeric END),1)
+         FROM trades t WHERE t.state='closed' AND (t.a_id=u.id OR t.b_id=u.id)
+         AND (CASE WHEN t.a_id=u.id THEN t.flags->>'ratingForA' ELSE t.flags->>'ratingForB' END) IS NOT NULL) AS rating,
+      (SELECT count(*)::int FROM sanctions s WHERE s.user_id=u.id AND (s.expires IS NULL OR s.expires>now())) AS sanctions_n
+    FROM users u WHERE u.id = ANY($1) AND u.status='active'`, [ids]) : { rows: [] };
+  const st = await q(`SELECT
+    (SELECT count(*)::int FROM users WHERE status='active') AS usuarios,
+    (SELECT count(*)::int FROM trades WHERE state='closed') AS cerrados`);
+
+  res.json({
+    offers: ofertas.rows.map((o) => ({
+      id: o.id, ownerId: o.owner_id, status: "active", inTrade: o.in_trade,
+      createdAt: o.created_at, ...o.data,
+    })),
+    users: duenos.rows.map((u) => ({
+      id: u.id, displayName: u.display_name, avatarId: u.avatar_id, verified: u.verified,
+      createdAt: u.created_at, lastSeen: u.last_seen, availability: u.availability,
+      trades: u.trades_done, rating: u.rating, sanctions: u.sanctions_n,
+      newAccount: (Date.now() - new Date(u.created_at)) / 86400000 < 30,
+      rank: u.sanctions_n > 0 ? "marcado" : u.trades_done >= 100 ? "oro"
+        : u.trades_done >= 25 ? "plata" : u.trades_done >= 5 ? "bronce" : "novato",
+    })),
+    stats: st.rows[0],
+  });
 });
 
 /* ---------- Estadísticas públicas ---------- */

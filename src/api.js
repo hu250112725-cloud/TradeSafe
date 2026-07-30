@@ -32,6 +32,13 @@ async function call(path, opts = {}) {
 }
 
 export const bootstrap = () => call("/bootstrap");
+// Escaparate para quien aún no tiene cuenta
+export async function verPublico() {
+  const r = await fetch(BASE + "/public");
+  if (!r.ok) throw new Error("Error de conexión con el servidor");
+  snap = { ...(await r.json()), me: null, trades: [], dm: [], disputes: [], sanctions: [], wishlist: [], matches: [], pokemon: [] };
+  return snap;
+}
 export async function entrarGoogle(credential) { const r = await call("/auth/google", { method: "POST", body: { credential } }); setToken(r.token); await sync(); return r.needsProfile; }
 export async function entrarFacebook(accessToken) { const r = await call("/auth/facebook", { method: "POST", body: { accessToken } }); setToken(r.token); await sync(); return r.needsProfile; }
 export async function completarPerfil(d) { const r = await call("/auth/complete", { method: "POST", body: d }); await sync(); return r.recovery; }
