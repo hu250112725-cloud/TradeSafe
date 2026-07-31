@@ -1034,3 +1034,40 @@ body.oscuro .resumen-n { color: #ff9b7a; }
 }
 body.oscuro .modal-icono { background: rgba(255,122,82,.14); color: #ff9b7a; }
 .modal-caja .btn { width: 100%; }
+
+/* ===== Mensajes: burbujas ajustadas al contenido ===== */
+.msg { max-width: 82%; }
+.burbuja {
+  width: fit-content; max-width: 100%;
+  padding: 8px 12px 6px; font-size: 14.5px; line-height: 1.38;
+}
+/* La hora va al final de la última línea si cabe */
+.hora-msg {
+  display: inline-block; float: right; margin: 6px 0 0 10px;
+  font-size: 10px; opacity: .55; line-height: 1;
+}
+.burbuja::after { content: ""; display: block; clear: both; }
+
+/* Aviso de chat sin proteger, en una línea */
+.aviso-fino {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; margin-bottom: 8px; cursor: pointer; font: inherit; text-align: left;
+  padding: 8px 12px; border-radius: 10px;
+  background: #fdf7e8; border: 1px solid rgba(224,185,63,.4); color: var(--oro);
+  font-size: 11.5px; line-height: 1.35;
+}
+.aviso-x { opacity: .6; flex-shrink: 0; }
+body.oscuro .aviso-fino { background: rgba(224,185,63,.10); color: #e7c66b; }
+
+/* Menú de acciones del chat */
+.menu-chat {
+  display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px;
+  border: 1px solid var(--linea); border-radius: 12px; overflow: hidden;
+  background: var(--papel-alto); box-shadow: var(--sombra);
+}
+.menu-chat button {
+  border: none; background: none; cursor: pointer; font: inherit; font-size: 13.5px;
+  padding: 12px 14px; text-align: left; color: var(--tinta);
+}
+.menu-chat button + button { border-top: 1px solid var(--linea); }
+.menu-chat button:active { background: var(--cielo); }

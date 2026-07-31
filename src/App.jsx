@@ -289,6 +289,10 @@ function Notificaciones({ avisos, noLeidas, onAbrirTrade, onAbrirDM, onIrTab, on
 function EmailBanner({ me, refresh }) {
   const [code, setCode] = useState("");
   const [hecho, setHecho] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [avisoVisto, setAvisoVisto] = useState(() => {
+    try { return localStorage.getItem("ts_aviso_dm") === "1"; } catch { return false; }
+  });
   const { run, busy, err } = useRun(refresh);
   if (me.emailVerified && !hecho) return null;
   if (hecho) return <div style={{ marginBottom: 14 }}><Aviso tipo="verde">{tx().emailListo}</Aviso></div>;
@@ -1192,6 +1196,10 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   const [reportando, setReportando] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [hecho, setHecho] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [avisoVisto, setAvisoVisto] = useState(() => {
+    try { return localStorage.getItem("ts_aviso_dm") === "1"; } catch { return false; }
+  });
   const { run, busy, err } = useRun(refresh);
   const caja = useRef(null);
   const campoMsg = useRef(null);
@@ -1223,8 +1231,19 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
       <div className="barra-det" style={{ paddingBottom: 8 }}>
         <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
         <span className="barra-det-tit">{tx().chatDirecto}</span>
-        <span style={{ width: 34 }} />
+        <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setMenu(!menu)} aria-label="⋯">⋯</button>
       </div>
+
+      {menu && (
+        <div className="menu-chat">
+          <button onClick={() => { setMenu(false); setReportando(true); }}>{tx().reportarChat}</button>
+          <button onClick={() => {
+            setMenu(false);
+            if (bloqueado) return run(() => api.desbloquear(otro.id));
+            if (confirm(tx().confirmBloquear)) run(() => api.bloquear(otro.id));
+          }}>{bloqueado ? tx().desbloquear : tx().bloquear}</button>
+        </div>
+      )}
 
       <div className="fila-entrenador" style={{ marginBottom: 10 }}>
         {otro?.avatarId
@@ -1235,7 +1254,14 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
         {bloqueado && <span className="tag lacre">{tx().bloqueado}</span>}
       </div>
 
-      <div style={{ marginBottom: 8 }}><Aviso tipo="oro">{tx().avisoDirecto}</Aviso></div>
+      {!avisoVisto && (
+        <button className="aviso-fino" onClick={() => {
+          setAvisoVisto(true);
+          try { localStorage.setItem("ts_aviso_dm", "1"); } catch { /* nada */ }
+        }}>
+          <span>⚠ {tx().avisoDirecto}</span><span className="aviso-x">✕</span>
+        </button>
+      )}
       {err && <div style={{ marginBottom: 8 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
       <div className="chat-mensajes" ref={caja}>
@@ -1305,15 +1331,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
           </button>
           <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setReportando(false)}>{tx().btnCancelar}</button>
         </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          <button className="btn mini secundario" onClick={() => setReportando(true)}>{tx().reportarChat}</button>
-          <button className="btn mini secundario" disabled={busy} onClick={() => {
-            if (bloqueado) return run(() => api.desbloquear(otro.id));
-            if (confirm(tx().confirmBloquear)) run(() => api.bloquear(otro.id));
-          }}>{bloqueado ? tx().desbloquear : tx().bloquear}</button>
-        </div>
-      )}
+      ) : null}
 
       {!bloqueado && (
         <div className="chat-form">
@@ -3050,7 +3068,7 @@ export default function App() {
 
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
-        {me && phase === "listo" && <Anuncios />}
+        {me && phase === "listo" && !abrirDM && !abrirTrade && <Anuncios />}
         {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} />}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
