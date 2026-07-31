@@ -477,7 +477,12 @@ function Anuncios() {
   const [vistos, setVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ts_anuncios_vistos") || "[]"); } catch { return []; }
   });
-  const activos = (api.snap.announcements || []).filter((a) => a.active !== false);
+  // Los avisos personales solo se muestran a su destinatario: el staff los ve
+  // en su panel, pero no le interrumpen la pantalla.
+  const mio = api.snap.me?.id;
+  const activos = (api.snap.announcements || [])
+    .filter((a) => a.active !== false)
+    .filter((a) => !a.userId || a.userId === mio);
   const urgente = activos.find((a) => a.level === "critical" && !vistos.includes(a.id));
 
   const confirmar = (id) => {
@@ -1737,6 +1742,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const [offsitePend, setOffsitePend] = useState(null);
   const [problemas, setProblemas] = useState(false);
   const [modo, setModo] = useState("chat");
+  const [cancelando, setCancelando] = useState(false);
+  const [motivoCancel, setMotivoCancel] = useState("");
+  const esStaff = ["moderator", "admin"].includes(me.role);
   // El chat se abre en cuanto el intercambio está en marcha, o si hay mediación
   const chatAbierto = ["in_progress", "post_proof"].includes(t.state)
     || !!t.mediationRequested || !!t.mediatorId;
@@ -1946,6 +1954,23 @@ function TradeView({ trade: id, me, refresh, onBack }) {
       {["proposal", "contract", "pre_proof"].includes(t.state) && (
         <p className="txt-xs suave mt-6">{tx().avisoCaducidad}</p>
       )}
+      {esStaff && !["closed", "cancelled"].includes(t.state) && (
+        cancelando ? (
+          <div className="ficha mt-14">
+            <Campo label={tx().lblMotivoCancel}>
+              <textarea value={motivoCancel} onChange={(e) => setMotivoCancel(e.target.value)} />
+            </Campo>
+            <button className="btn mini peligro" disabled={busy || motivoCancel.length < 10}
+              onClick={() => run(async () => { await api.cancelarTradeStaff(t.id, motivoCancel); setCancelando(false); setMotivoCancel(""); })}>
+              {tx().cancelarTrade}
+            </button>
+            <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setCancelando(false)}>{tx().btnCancelar}</button>
+          </div>
+        ) : (
+          <button className="btn mini secundario mt-14" onClick={() => setCancelando(true)}>⚑ {tx().cancelarTrade}</button>
+        )
+      )}
+
       {t.state === "cancelled" && t.cancelReason === "offer_traded" && (
         <div className="mt-14"><Aviso tipo="oro">{tx().canceladoPorTrato}</Aviso></div>
       )}
@@ -2596,12 +2621,123 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
 }
 
 /* ================= Staff ================= */
+/* Ficha de moderación: todo sobre un usuario y las acciones sobre él */
+function FichaModeracion({ userId, onVolver, refresh }) {
+  const [d, setD] = useState(null);
+  const [accion, setAccion] = useState(null);
+  const [f, setF] = useState({ days: 7 });
+  const [hecho, setHecho] = useState("");
+  const { run, busy, err } = useRun(refresh);
+
+  const cargar = () => api.fichaModeracion(userId).then(setD).catch(() => setD(false));
+  useEffect(() => { cargar(); }, [userId]);
+  if (d === false) return <div><button className="enlace-volver" onClick={onVolver}>{tx().volverLista}</button><Vacio icono="⚠">—</Vacio></div>;
+  if (!d) return <div className="txt-s suave">…</div>;
+
+  const u = d.user;
+  const silencio = d.sanctions.find((s) => s.level === "mute" && (!s.expires || new Date(s.expires) > new Date()));
+
+  return (
+    <div>
+      <div className="barra-det">
+        <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
+        <span className="barra-det-tit">{tx().fichaMod}</span>
+        <span style={{ width: 34 }} />
+      </div>
+
+      <div className="ficha">
+        <div className="h2">{u.display_name}</div>
+        <div className="txt-xs suave">{tx().entrenador} {u.trainer_name || "—"} · {u.role} · {u.status}</div>
+        <div className="tags mt-10">
+          {u.verified ? <span className="tag verde">✓</span> : <span className="tag tenue">{tx().sinVerificar}</span>}
+          <span className="tag tenue">{d.trades.length} {tx().trades}</span>
+          <span className="tag tenue">{d.offers.length} {tx().ofertas}</span>
+          {d.reportsAgainst > 0 && <span className="tag lacre">{tx().reportadoVeces(d.reportsAgainst)}</span>}
+          {silencio && <span className="tag lacre">{tx().silenciado}</span>}
+        </div>
+        <div className="txt-xs suave mt-10">{tx().miembroDesde} {fecha(u.created_at)}</div>
+      </div>
+
+      {err && <div className="mt-14"><Aviso tipo="lacre">{err}</Aviso></div>}
+      {hecho && <div className="mt-14"><Aviso tipo="verde">{tx().accionHecha}</Aviso></div>}
+
+      <div className="tags mt-14">
+        <button className="btn mini secundario" onClick={() => { setAccion(accion === "avisar" ? null : "avisar"); setHecho(""); }}>{tx().avisarU}</button>
+        {silencio
+          ? <button className="btn mini secundario" disabled={busy}
+              onClick={() => run(async () => { await api.quitarSilencio(userId); await cargar(); setHecho("1"); })}>{tx().quitarSilencio}</button>
+          : <button className="btn mini secundario" onClick={() => { setAccion(accion === "silenciar" ? null : "silenciar"); setHecho(""); }}>{tx().silenciar}</button>}
+      </div>
+
+      {accion === "avisar" && (
+        <div className="ficha mt-14">
+          <Campo label={tx().lblTituloAviso}><input value={f.title || ""} onChange={(e) => setF({ ...f, title: e.target.value })} /></Campo>
+          <Campo label={tx().lblCuerpoAviso}><textarea value={f.body || ""} onChange={(e) => setF({ ...f, body: e.target.value })} /></Campo>
+          <button className="btn mini" disabled={busy || !f.title || !f.body}
+            onClick={() => run(async () => {
+              await api.avisarUsuario(userId, { title: f.title, body: f.body });
+              setAccion(null); setF({ days: 7 }); setHecho("1");
+            })}>{tx().avisarU}</button>
+        </div>
+      )}
+
+      {accion === "silenciar" && (
+        <div className="ficha mt-14">
+          <Campo label={tx().lblDias}><input type="number" min="1" max="90" value={f.days}
+            onChange={(e) => setF({ ...f, days: e.target.value })} /></Campo>
+          <Campo label={tx().lblMotivoMod}><textarea value={f.reason || ""} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Campo>
+          <button className="btn mini peligro" disabled={busy || (f.reason || "").length < 10}
+            onClick={() => run(async () => {
+              await api.silenciar(userId, { days: Number(f.days), reason: f.reason });
+              setAccion(null); setF({ days: 7 }); await cargar(); setHecho("1");
+            })}>{tx().silenciar}</button>
+        </div>
+      )}
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().susSanciones}</div>
+        {d.sanctions.length === 0 ? <p className="txt-xs suave">{tx().sinSanciones}</p>
+          : d.sanctions.map((x) => (
+            <div key={x.id} className="fila" style={{ borderTop: "1px solid var(--linea)", padding: "9px 0" }}>
+              <span className="txt-s"><b>{x.level}</b> · {x.summary}</span>
+              <span className="txt-xs suave">{fecha(x.created_at)}</span>
+            </div>
+          ))}
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().susTrades}</div>
+        {d.trades.length === 0 ? <p className="txt-xs suave">—</p>
+          : d.trades.map((t) => (
+            <div key={t.id} className="fila" style={{ borderTop: "1px solid var(--linea)", padding: "9px 0" }}>
+              <span className="txt-s"><Sello code={t.code} /> {stateLabel(t.state)}</span>
+              <span className="txt-xs suave">{fecha(t.at)}</span>
+            </div>
+          ))}
+      </div>
+
+      <div className="ficha mt-14">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().susOfertas}</div>
+        {d.offers.length === 0 ? <p className="txt-xs suave">—</p>
+          : d.offers.map((o) => (
+            <div key={o.id} className="fila" style={{ borderTop: "1px solid var(--linea)", padding: "9px 0" }}>
+              <span className="txt-s">{o.species}{o.isShiny ? " ★" : ""}</span>
+              <span className="txt-xs suave">{o.status}</span>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 function Staff({ me, refresh }) {
   const [pane, setPane] = useState("disputas");
   const [decideId, setDecideId] = useState(null);
   const [resumen, setResumen] = useState("");
   const [nivel, setNivel] = useState("minor");
   const [emitido, setEmitido] = useState(null);
+  const [buscaU, setBuscaU] = useState("");
+  const [fichaMod, setFichaMod] = useState(null);
   const [anTit, setAnTit] = useState("");
   const [anTxt, setAnTxt] = useState("");
   const [anNivel, setAnNivel] = useState("info");
@@ -2613,6 +2749,8 @@ function Staff({ me, refresh }) {
   const apelaciones = api.snap.sanctions.filter((s) => s.appealStatus === "open");
   const reportes = api.snap.offerReports || [];
   const chatsReportados = api.snap.dmReports || [];
+
+  if (fichaMod) return <FichaModeracion userId={fichaMod} onVolver={() => setFichaMod(null)} refresh={refresh} />;
 
   return (
     <div>
@@ -2825,6 +2963,8 @@ function Staff({ me, refresh }) {
 
       {pane === "usuarios" && (
         <div className="ficha">
+          <input className="buscador" value={buscaU} onChange={(e) => setBuscaU(e.target.value)}
+            placeholder={tx().buscarUsuario} />
           <div style={{ marginBottom: 12 }}>
             <Aviso tipo="oro">{tx().codigoEmitido.replace(":", ".")} {tx().soloVerificados}.</Aviso>
           </div>
@@ -2832,7 +2972,10 @@ function Staff({ me, refresh }) {
           <table className="tabla">
             <thead><tr><th>{tx().thUsuario}</th><th>{tx().thRol}</th><th>{tx().thEstado}</th><th></th></tr></thead>
             <tbody>
-              {api.snap.users.map((u) => (
+              {api.snap.users
+                .filter((u) => !buscaU.trim() ||
+                  (u.displayName + " " + (u.trainerName || "")).toLowerCase().includes(buscaU.trim().toLowerCase()))
+                .map((u) => (
                 <tr key={u.id}>
                   <td><b>{u.displayName}</b>{(u.dupFriend || u.dupFp) && <span className="tag lacre" style={{ marginLeft: 6 }}>⚠</span>}<br /><span className="suave">{u.trainerName}</span></td>
                   <td>
@@ -2852,6 +2995,7 @@ function Staff({ me, refresh }) {
                           {u.status === "suspended" ? tx().btnReactivar : tx().btnSuspender}
                         </button>
                       )}
+                      <button className="btn mini secundario" onClick={() => setFichaMod(u.id)}>{tx().verFicha}</button>
                       {u.verified ? (
                         <button className="btn mini secundario" disabled={busy}
                           onClick={() => run(async () => setEmitido({ id: u.id, code: await api.staffRecovery(u.id) }))}>

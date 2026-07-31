@@ -52,6 +52,16 @@ async function authAny(req, res, next) {
 
 // Quien entra con Google o Facebook no puede operar hasta dar su nombre de
 // entrenador y su clave de amigo: sin eso no se puede intercambiar.
+// Silencio temporal: no puede publicar ni escribir, pero sí cerrar lo pendiente
+const noSilenciado = async (req, res, next) => {
+  const r = await q(`SELECT summary, expires FROM sanctions
+                     WHERE user_id=$1 AND level='mute' AND (expires IS NULL OR expires > now())
+                     ORDER BY expires DESC LIMIT 1`, [req.me.id]);
+  if (!r.rowCount) return next();
+  const hasta = r.rows[0].expires ? new Date(r.rows[0].expires).toLocaleDateString("es") : "";
+  return err(res, "muted", 403, `Tienes el envío de mensajes y publicaciones bloqueado temporalmente${hasta ? " hasta el " + hasta : ""}. Motivo: ${r.rows[0].summary}`);
+};
+
 const needsPerfil = (req, res, next) => (req.me.trainer_name && req.me.friend_code) ? next()
   : err(res, "profile_incomplete", 403, "Completa tu nombre de entrenador y tu clave de amigo para poder operar");
 
@@ -545,7 +555,7 @@ app.get("/api/state", authAny, async (req, res) => {
 
   const anunR = esStaff
     ? await q(`SELECT * FROM announcements ORDER BY created_at DESC LIMIT 30`)
-    : await anunciosActivos();
+    : await anunciosActivos(me.id);
   const pokeR = await q(`SELECT * FROM pokemon WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [me.id]);
   const destR = await q(
     `SELECT id, owner_id, data, image_id FROM pokemon WHERE featured AND status <> 'traded' LIMIT 300`);
@@ -635,6 +645,7 @@ app.get("/api/state", authAny, async (req, res) => {
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
     announcements: anunR.rows.map((a) => ({
       id: a.id, title: a.title, body: a.body, level: a.level, at: a.created_at,
+      userId: a.user_id || null,
       ...(esStaff ? { active: a.active, expiresAt: a.expires_at } : {}),
     })),
     pokemon: pokeR.rows.map((p) => ({
@@ -672,7 +683,7 @@ app.get("/api/state", authAny, async (req, res) => {
 
 /* ---------- Ofertas ---------- */
 const MAX_OFERTAS = 20;
-app.post("/api/offers", auth, needsEmail, needsPerfil, async (req, res) => {
+app.post("/api/offers", auth, needsEmail, needsPerfil, noSilenciado, async (req, res) => {
   const b = req.body || {};
   const n = await q(`SELECT count(*)::int AS n FROM offers WHERE owner_id=$1 AND status='active'`, [req.me.id]);
   if (n.rows[0].n >= MAX_OFERTAS)
@@ -776,12 +787,93 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Herramientas del staff ---------- */
+
+// Aviso personal: le sale a pantalla completa solo a esa persona
+app.post("/api/users/:id/warn", auth, staff, async (req, res) => {
+  const u = await q(`SELECT id FROM users WHERE id=$1 AND status <> 'deleted'`, [req.params.id]);
+  if (!u.rowCount) return err(res, "not_found", 404, "Usuario no encontrado");
+  const title = String(req.body?.title || "").trim().slice(0, 80);
+  const body = String(req.body?.body || "").trim().slice(0, 600);
+  if (title.length < 3 || body.length < 3)
+    return err(res, "validation_error", 422, "Escribe un título y un mensaje");
+  const r = await q(
+    `INSERT INTO announcements (title, body, level, created_by, user_id) VALUES ($1,$2,'critical',$3,$4) RETURNING id`,
+    [title, body, req.me.id, req.params.id]);
+  await audit(req.me.id, "user.warn", req.params.id, title);
+  res.status(201).json({ id: r.rows[0].id });
+});
+
+// Silenciar temporalmente: puede terminar lo empezado, pero no publicar ni escribir
+app.post("/api/users/:id/mute", auth, staff, async (req, res) => {
+  const dias = Math.max(1, Math.min(90, Number(req.body?.days) || 7));
+  const motivo = String(req.body?.reason || "").trim().slice(0, 300);
+  if (motivo.length < 10) return err(res, "validation_error", 422, "Explica el motivo (mínimo 10 caracteres)");
+  const u = await q(`SELECT id FROM users WHERE id=$1 AND status='active'`, [req.params.id]);
+  if (!u.rowCount) return err(res, "not_found", 404, "Usuario no encontrado");
+  await q(`INSERT INTO sanctions (user_id, level, summary, expires)
+           VALUES ($1,'mute',$2, now() + ($3 || ' days')::interval)`,
+    [req.params.id, motivo, String(dias)]);
+  await audit(req.me.id, "user.mute", req.params.id, `${dias} días · ${motivo}`);
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/users/:id/unmute", auth, staff, async (req, res) => {
+  await q(`UPDATE sanctions SET expires = now() WHERE user_id=$1 AND level='mute' AND (expires IS NULL OR expires > now())`,
+    [req.params.id]);
+  await audit(req.me.id, "user.unmute", req.params.id, "Silencio levantado");
+  res.json({ ok: true });
+});
+
+// Cancelar un intercambio atascado, dejando constancia
+app.post("/api/trades/:id/force-cancel", auth, staff, async (req, res) => {
+  const t = await getTrade(req.params.id);
+  if (!t) return err(res, "not_found", 404, "Intercambio no encontrado");
+  if (["closed", "cancelled"].includes(t.state))
+    return err(res, "state_invalid", 409, "Este intercambio ya está terminado");
+  const motivo = String(req.body?.reason || "").trim().slice(0, 300);
+  if (motivo.length < 10) return err(res, "validation_error", 422, "Explica el motivo (mínimo 10 caracteres)");
+  await setTrade(t, { cancelReason: "staff", staffNote: motivo }, "cancelled", req.me.id, "cancelled");
+  await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'lacre',$2)`,
+    [t.id, "⚑ El staff canceló este intercambio: " + motivo]);
+  await q(`UPDATE pokemon SET status='owned', offer_id=NULL WHERE offer_id=$1`, [t.offer_id]);
+  await q(`UPDATE offers SET status='active' WHERE id=$1 AND status='removed'`, [t.offer_id]);
+  await audit(req.me.id, "trade.force_cancel", t.id, motivo);
+  await notify([t.a_id, t.b_id], "cancelled", t.code);
+  res.json({ ok: true });
+});
+
+// Ficha completa de un usuario para moderar con contexto
+app.get("/api/staff/user/:id", auth, staff, async (req, res) => {
+  const id = req.params.id;
+  const u = await q(`SELECT id, display_name, trainer_name, email, role, status, verified, created_at,
+                       last_seen, friend_code, signup_fp FROM users WHERE id=$1`, [id]);
+  if (!u.rowCount) return err(res, "not_found", 404, "Usuario no encontrado");
+  const [ofertas, trades, sanciones, reportes, dms] = await Promise.all([
+    q(`SELECT id, data, status, created_at FROM offers WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 20`, [id]),
+    q(`SELECT id, code, state, created_at, a_id, b_id FROM trades WHERE a_id=$1 OR b_id=$1 ORDER BY created_at DESC LIMIT 20`, [id]),
+    q(`SELECT id, level, summary, created_at, expires FROM sanctions WHERE user_id=$1 ORDER BY created_at DESC`, [id]),
+    q(`SELECT count(*)::int AS n FROM audit a JOIN offers o ON o.id::text = a.target
+       WHERE a.action='offer.report' AND o.owner_id=$1`, [id]),
+    q(`SELECT count(*)::int AS n FROM dm_reports r JOIN dm_threads t ON t.id=r.thread_id
+       WHERE (t.a_id=$1 OR t.b_id=$1) AND r.reporter_id <> $1`, [id]),
+  ]);
+  res.json({
+    user: { ...u.rows[0], id: u.rows[0].id },
+    offers: ofertas.rows.map((o) => ({ id: o.id, status: o.status, at: o.created_at, ...o.data })),
+    trades: trades.rows.map((t) => ({ id: t.id, code: t.code, state: t.state, at: t.created_at })),
+    sanctions: sanciones.rows,
+    reportsAgainst: reportes.rows[0].n + dms.rows[0].n,
+  });
+});
+
 /* ---------- Anuncios del staff ---------- */
-const anunciosActivos = () => q(
-  `SELECT id, title, body, level, created_at FROM announcements
+const anunciosActivos = (userId = null) => q(
+  `SELECT id, title, body, level, created_at, user_id FROM announcements
    WHERE active AND (expires_at IS NULL OR expires_at > now())
+     AND (user_id IS NULL OR user_id = $1)
    ORDER BY CASE level WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, created_at DESC
-   LIMIT 5`);
+   LIMIT 5`, [userId]);
 
 app.post("/api/announcements", auth, staff, async (req, res) => {
   const title = String(req.body?.title || "").trim().slice(0, 80);
@@ -850,7 +942,7 @@ app.get("/api/public", async (_req, res) => {
         : u.trades_done >= 25 ? "plata" : u.trades_done >= 5 ? "bronce" : "novato",
     })),
     stats: st.rows[0],
-    announcements: (await anunciosActivos()).rows.map((a) => ({
+    announcements: (await anunciosActivos(null)).rows.map((a) => ({
       id: a.id, title: a.title, body: a.body, level: a.level, at: a.created_at })),
   });
 });
@@ -1218,7 +1310,7 @@ app.post("/api/pokemon/:id/featured", auth, async (req, res) => {
 });
 
 /* Publicar en el mercado directamente desde el inventario */
-app.post("/api/pokemon/:id/list", auth, needsEmail, needsPerfil, async (req, res) => {
+app.post("/api/pokemon/:id/list", auth, needsEmail, needsPerfil, noSilenciado, async (req, res) => {
   const p = await q(`SELECT * FROM pokemon WHERE id=$1 AND owner_id=$2`, [req.params.id, req.me.id]);
   if (!p.rowCount) return err(res, "not_found", 404, "Pokémon no encontrado");
   if (p.rows[0].status !== "owned") return err(res, "state_invalid", 409, "Este Pokémon ya está publicado o intercambiado");
@@ -1262,7 +1354,7 @@ async function puedeEscribir(u) {
 }
 
 const MAX_CONV_DIA = 10;
-app.post("/api/dm", auth, needsEmail, needsPerfil, async (req, res) => {
+app.post("/api/dm", auth, needsEmail, needsPerfil, noSilenciado, async (req, res) => {
   const otro = String(req.body?.userId || "");
   if (otro === req.me.id) return err(res, "conflict", 409, "No puedes escribirte a ti mismo");
   const motivo = await puedeEscribir(req.me);
@@ -1287,7 +1379,7 @@ app.post("/api/dm", auth, needsEmail, needsPerfil, async (req, res) => {
   res.status(201).json({ id: r.rows[0].id });
 });
 
-app.post("/api/dm/:id/message", auth, needsEmail, needsPerfil, async (req, res) => {
+app.post("/api/dm/:id/message", auth, needsEmail, needsPerfil, noSilenciado, async (req, res) => {
   const t = await q(`SELECT * FROM dm_threads WHERE id=$1 AND (a_id=$2 OR b_id=$2)`, [req.params.id, req.me.id]);
   if (!t.rowCount) return err(res, "not_found", 404, "Conversación no encontrada");
   const motivo = await puedeEscribir(req.me);

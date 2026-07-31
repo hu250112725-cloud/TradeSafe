@@ -40,6 +40,12 @@ export async function crearAnuncio(d) { await call("/announcements", { method: "
 export async function alternarAnuncio(id) { await call(`/announcements/${id}/toggle`, { method: "POST" }); await sync(); }
 export async function borrarAnuncio(id) { await call(`/announcements/${id}`, { method: "DELETE" }); await sync(); }
 
+export async function avisarUsuario(id, d) { await call(`/users/${id}/warn`, { method: "POST", body: d }); await sync(); }
+export async function silenciar(id, d) { await call(`/users/${id}/mute`, { method: "POST", body: d }); await sync(); }
+export async function quitarSilencio(id) { await call(`/users/${id}/unmute`, { method: "POST" }); await sync(); }
+export async function cancelarTradeStaff(id, reason) { await call(`/trades/${id}/force-cancel`, { method: "POST", body: { reason } }); await sync(); }
+export const fichaModeracion = (id) => call(`/staff/user/${id}`);
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {
