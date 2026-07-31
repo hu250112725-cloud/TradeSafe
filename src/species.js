@@ -68,10 +68,12 @@ export const spriteAlt = (nombre, esShiny) => (esShiny ? spriteShinyAlt(nombre) 
 export function detectarEspecie(texto) {
   const t = String(texto || "");
   const palabras = t.split(/[^\p{L}\p{N}'♀♂.\-]+/u).filter(Boolean);
-  for (let n = 3; n >= 1; n--) {
+  // Se prueba de más palabras a menos, para que "Floette Flor Eterna"
+  // gane frente a "Floette" a secas.
+  for (let n = 4; n >= 1; n--) {
     for (let i = 0; i + n <= palabras.length; i++) {
       const cand = palabras.slice(i, i + n).join(" ");
-      if (dexId(cand)) return cand;
+      if (FORMAS?.a?.[norm(cand)] || dexId(cand)) return cand;
     }
   }
   return null;
@@ -91,11 +93,12 @@ export function nombrePorId(id, lang = "es") {
 export function nombreLimpio(texto) {
   const t = String(texto || "").trim();
   if (!t) return t;
-  const forma = FORMAS?.a?.[norm(t)];
-  if (forma && FORMAS.c[forma]) return FORMAS.c[forma];
-  if (dexId(t)) return t;
-  const dentro = detectarEspecie(t);
-  if (!dentro) return t;
-  const f2 = FORMAS?.a?.[norm(dentro)];
-  return (f2 && FORMAS.c[f2]) || dentro;
+  const canon = (txt) => {
+    const f = FORMAS?.a?.[norm(txt)];
+    if (f && FORMAS.c[f]) return FORMAS.c[f];
+    const id = dexId(txt);
+    // Siempre con la ortografía del catálogo, escriba como escriba la persona
+    return id ? (SPECIES.find((x) => dexId(x) === id) || txt) : null;
+  };
+  return canon(t) || canon(detectarEspecie(t) || "") || t;
 }

@@ -938,3 +938,7 @@ body.oscuro .fc-icono { color: #57cf90; }
 .flecha { font-size: 14px; padding: 0; }
 /* En pantallas estrechas se permite una línea más */
 @media (max-width: 400px) { .nombre-pk { -webkit-line-clamp: 3; font-size: 13.5px; } }
+
+/* El botón flotante nunca debe tapar acciones */
+.fab { bottom: 96px; }
+main:has(.fab) .content, .content:has(.fab) { padding-bottom: 190px; }

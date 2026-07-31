@@ -804,7 +804,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
             <div style={{ minWidth: 0 }}>
-              <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{o.species}</div>
+              <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{nombreLimpio(o.species)}</div>
               {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
               {o.inTrade && <span className="tag oro mt-6" style={{ display: "inline-block" }}>{tx().enTrato}</span>}
             </div>
@@ -862,7 +862,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 {b ? <Sprite nombre={b} tam={62} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 62, height: 62, fontSize: 24 }}>?</span>}
                 <div style={{ minWidth: 0 }}>
-                  <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{b || tx().cualquierCosa}</div>
+                  <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{b ? nombreLimpio(b) : tx().cualquierCosa}</div>
                   {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
                 </div>
               </div>
@@ -907,6 +907,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         ) : (
           <button className="fab" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
         )}
+        <div style={{ height: 8 }} />
         {me && o.ownerId !== me?.id && (reportado ? (
           <div className="mt-14"><Aviso tipo="verde">{tx().reporteEnviado}</Aviso></div>
         ) : reportando ? (
