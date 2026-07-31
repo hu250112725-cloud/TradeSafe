@@ -999,6 +999,53 @@ app.delete("/api/announcements/:id", auth, staff, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Enlace compartible de una oferta ----------
+   Devuelve una página con vista previa (la que muestran Facebook, WhatsApp
+   o Twitter al pegar el enlace) y lleva a la app abierta en esa oferta. */
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+app.get("/o/:id", async (req, res) => {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const base = `${proto}://${req.headers.host}`;
+  const destino = `${base}/?o=${encodeURIComponent(req.params.id)}`;
+  let titulo = "TradeSafe", desc = "Intercambios de Pokémon con contrato y pruebas.", img = `${base}/icon-512.png`;
+
+  try {
+    const r = await q(
+      `SELECT o.data, u.display_name FROM offers o JOIN users u ON u.id = o.owner_id
+       WHERE o.id=$1 AND o.status='active'`, [req.params.id]);
+    if (r.rowCount) {
+      const o = r.rows[0].data;
+      titulo = `${o.species}${o.isShiny ? " ✦" : ""} · TradeSafe`;
+      desc = `${r.rows[0].display_name} ofrece ${o.species}${o.isShiny ? " shiny" : ""} y busca ${o.wants}.`;
+      if (o.originImage) img = `${base}/api/images/${o.originImage}`;
+    }
+  } catch { /* si falla, se usa la vista genérica */ }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(`<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(titulo)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TradeSafe">
+<meta property="og:title" content="${esc(titulo)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${esc(img)}">
+<meta property="og:url" content="${esc(destino)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(titulo)}">
+<meta name="twitter:description" content="${esc(desc)}">
+<meta name="twitter:image" content="${esc(img)}">
+<meta http-equiv="refresh" content="0;url=${esc(destino)}">
+<script>location.replace(${JSON.stringify(destino)});</script>
+</head><body style="font-family:system-ui;padding:24px">
+<p>${esc(desc)}</p><p><a href="${esc(destino)}">Abrir en TradeSafe</a></p>
+</body></html>`);
+});
+
 /* ---------- Escaparate público (sin cuenta) ----------
    Solo lo imprescindible para mirar el mercado. Nunca salen correos,
    claves de amigo, intercambios, mensajes ni datos de moderación. */

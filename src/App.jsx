@@ -863,6 +863,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
   const [motivo, setMotivo] = useState("");
   const [reportado, setReportado] = useState(false);
   const [proponiendo, setProponiendo] = useState(false);
+  const [copiadoLink, setCopiadoLink] = useState(false);
   const { run, busy, err } = useRun(refresh);
   const [orden, setOrden] = useState("reciente");
   const [tope, setTope] = useState(20);
@@ -890,7 +891,20 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
     if (!o || o.status !== "active") { setOpen(null); return null; }
     return (
       <div>
-        <BarraDetalle titulo={tx().detalleOferta} onVolver={() => setOpen(null)} />
+        <div className="barra-det">
+          <button className="volver-ic" onClick={() => setOpen(null)} aria-label="←">‹</button>
+          <span className="barra-det-tit">{tx().detalleOferta}</span>
+          <button className="volver-ic" style={{ fontSize: 20 }} aria-label={tx().compartir}
+            onClick={async () => {
+              const url = `${location.origin}/o/${o.id}`;
+              const texto = tx().textoCompartir(nombreLimpio(o.species), o.wants);
+              try {
+                if (navigator.share) await navigator.share({ title: "TradeSafe", text: texto, url });
+                else { await navigator.clipboard.writeText(`${texto}\n${url}`); setCopiadoLink(true); setTimeout(() => setCopiadoLink(false), 2500); }
+              } catch { /* el usuario canceló */ }
+            }}>↗</button>
+        </div>
+        {copiadoLink && <div style={{ marginBottom: 10 }}><Aviso tipo="verde">{tx().enlaceCopiado}</Aviso></div>}
         <FilaEntrenador userId={o.ownerId} cuando={o.createdAt} onFicha={onFicha} />
         {/* OFRECE */}
         <div className="ficha bloque-pk">
@@ -3302,7 +3316,14 @@ export default function App() {
   const [abrirTrade, setAbrirTrade] = useState(null);
   const [abrirDM, setAbrirDM] = useState(null);
   const [verFicha, setVerFicha] = useState(null);
-  const [abrirOferta, setAbrirOferta] = useState(null);
+  const [abrirOferta, setAbrirOferta] = useState(() => {
+    // Si se llega desde un enlace compartido, se abre esa oferta
+    try {
+      const id = new URLSearchParams(location.search).get("o");
+      if (id) history.replaceState(null, "", location.pathname);
+      return id;
+    } catch { return null; }
+  });
   const [irAPublicar, setIrAPublicar] = useState(null);
   const [stats, setStats] = useState(null);
   const [verAyuda, setVerAyuda] = useState(false);
