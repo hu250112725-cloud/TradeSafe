@@ -617,11 +617,12 @@ function AuthScreen({ refresh, hasUsers, onCodigo, cfg, onCompletar }) {
 }
 
 /* ================= Publicar oferta ================= */
-function Publicar({ refresh, done }) {
+function Publicar({ refresh, done, cfgIA }) {
   const [f, setF] = useState({});
   const [detalles, setDetalles] = useState(false);
   const [leyendo, setLeyendo] = useState(false);
   const [leido, setLeido] = useState(null);
+  const [restantes, setRestantes] = useState(null);
   const { run, busy, err } = useRun(refresh);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
@@ -645,10 +646,23 @@ function Publicar({ refresh, done }) {
           <button className="btn mini secundario" disabled={leyendo} onClick={async () => {
             const img = await pickImage();
             if (!img) return;
-            setLeyendo(true); setLeido(null);
+            setLeyendo(true); setLeido(null); setRestantes(null);
             try {
-              const { leerCaptura } = await import("./ocr.js");
-              const d = await leerCaptura(img, getLang());
+              // Primero la IA, que lee mucho mejor; si no está o falla,
+              // se usa el lector local del propio teléfono.
+              let d = null;
+              if (cfgIA) {
+                try {
+                  const r = await api.leerCapturaIA(img);
+                  setRestantes(r.restantes);
+                  d = { especie: r.species, nivel: r.level, naturaleza: r.nature, habilidad: r.ability,
+                        ball: r.ball, origen: r.origin, shiny: r.shiny, movimientos: r.moves || [], ivs: r.ivs || [] };
+                } catch { /* se intenta en local */ }
+              }
+              if (!d) {
+                const { leerCaptura } = await import("./ocr.js");
+                d = await leerCaptura(img, getLang());
+              }
               const nuevo = { ...f };
               let n = 0;
               if (d.especie) { nuevo.species = d.especie; n++; }
@@ -656,7 +670,9 @@ function Publicar({ refresh, done }) {
               if (d.naturaleza) { nuevo.nature = d.naturaleza; n++; }
               if (d.ball) { nuevo.ball = d.ball; n++; }
               if (d.origen) { nuevo.origin = d.origen; n++; }
-              if (d.movimientos.length) { nuevo.moves = d.movimientos.join(", "); n++; }
+              if (d.habilidad) { nuevo.ability = d.habilidad; n++; }
+              if (d.movimientos?.length) { nuevo.moves = d.movimientos.join(", "); n++; }
+              if (d.ivs?.length === 6) { nuevo.ivs = d.ivs; n++; }
               if (d.shiny) { nuevo.shiny = true; n++; }
               nuevo.originImage = img;              // la captura queda como prueba de origen
               setF(nuevo);
@@ -664,7 +680,8 @@ function Publicar({ refresh, done }) {
               setLeido(n);
             } catch { setLeido(0); }
             setLeyendo(false);
-          }}>{leyendo ? tx().leyendoFoto : tx().rellenarFoto}</button>
+          }}>{leyendo ? (cfgIA ? tx().leyendoIA : tx().leyendoFoto) : (cfgIA ? tx().leerConIA : tx().rellenarFoto)}</button>
+          {restantes !== null && <p className="txt-xs suave mt-6">{tx().iaRestantes(restantes)}</p>}
           <p className="txt-xs suave mt-6">{tx().fotoAviso} {tx().fotoDescarga}</p>
           {leido !== null && (
             <div className="mt-10">
@@ -824,7 +841,7 @@ function CartaOferta({ o, me, onAbrir }) {
 }
 
 /* ================= Mercado ================= */
-function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat, stats, onPideCuenta }) {
+function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff, irAPublicar, onIrAlChat, stats, onPideCuenta, cfgIA }) {
   const [vista, setVista] = useState("ofertas");
   const [open, setOpen] = useState(null);
   useEffect(() => { if (abrir) { setOpen(abrir); onAbierto && onAbierto(); } }, [abrir]);
@@ -1010,7 +1027,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         </button>
       </div>
 
-      {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} />}
+      {vista === "publicar" && <Publicar refresh={refresh} done={() => setVista("ofertas")} cfgIA={cfgIA} />}
       {vista === "deseos" && (
         <Deseos me={me} refresh={refresh}
           onAbrirOferta={(id) => { setVista("ofertas"); setOpen(id); }} />
@@ -1086,7 +1103,63 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
 }
 
 /* ================= Centro de ayuda: vídeo tutorial ================= */
-function Ayuda({ onCerrar }) {
+function Asistente() {
+  const [hist, setHist] = useState([]);
+  const [txt, setTxt] = useState("");
+  const [pensando, setPensando] = useState(false);
+  const caja = useRef(null);
+  useEffect(() => { const c = caja.current; if (c) c.scrollTop = c.scrollHeight; }, [hist.length, pensando]);
+
+  const preguntar = async (pregunta) => {
+    const p = String(pregunta || txt).trim();
+    if (!p || pensando) return;
+    setTxt(""); setPensando(true);
+    const previo = [...hist, { role: "user", content: p }];
+    setHist(previo);
+    try {
+      const r = await api.preguntarIA(p, hist);
+      setHist([...previo, { role: "assistant", content: r.text }]);
+    } catch (e) {
+      setHist([...previo, { role: "assistant", content: tErr(e.message), error: true }]);
+    }
+    setPensando(false);
+  };
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--linea)", paddingTop: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().asistente}</div>
+      <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().asistenteIntro}</p>
+
+      {hist.length > 0 && (
+        <div className="chat-asistente" ref={caja}>
+          {hist.map((m, i) => (
+            <div key={i} className={`msg ${m.role === "user" ? "mia" : "suya"} inicio-grupo`}>
+              <div className={`burbuja ${m.role === "user" ? "mia" : "suya"} ${m.error ? "err" : ""}`}>{m.content}</div>
+            </div>
+          ))}
+          {pensando && <div className="msg suya inicio-grupo"><div className="burbuja suya">{tx().asistentePensando}</div></div>}
+        </div>
+      )}
+
+      {hist.length === 0 && (
+        <div className="rapidas" style={{ padding: "0 0 10px" }}>
+          {[tx().sugerencia1, tx().sugerencia2, tx().sugerencia3].map((q) => (
+            <button key={q} className="rapida" onClick={() => preguntar(q)}>{q}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="chat-form" style={{ borderRadius: 999, border: "1px solid var(--linea)", padding: 6 }}>
+        <input className="chat-input" value={txt} onChange={(e) => setTxt(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") preguntar(); }} placeholder={tx().phAsistente} />
+        <button className="btn-enviar" disabled={pensando || !txt.trim()} onClick={() => preguntar()}>↑</button>
+      </div>
+      <p className="txt-xs suave mt-6">{tx().asistenteAviso}</p>
+    </div>
+  );
+}
+
+function Ayuda({ onCerrar, cfgIA }) {
   return (
     <div className="ficha" style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1101,6 +1174,7 @@ function Ayuda({ onCerrar }) {
       </video>
       <a className="btn mini secundario mt-10" style={{ textDecoration: "none", textAlign: "center", display: "block" }}
         href={`/tutorial-${getLang()}.mp4`} download>{tx().descargarVideo}</a>
+      {cfgIA && <Asistente />}
     </div>
   );
 }
@@ -3100,7 +3174,7 @@ export default function App() {
         const b = await api.bootstrap();
         if (!vivo) return;
         setHasUsers(b.hasUsers);
-        setCfg({ google: b.google, facebook: b.facebook });
+        setCfg({ google: b.google, facebook: b.facebook, ia: b.ia });
         // Las formas especiales (Flor Eterna, regionales, megas) se cargan aparte
         cargarFormas().then(() => vivo && force()).catch(() => {});
         if (api.getToken()) { try { await api.sync(); } catch { /* sesión caducada */ } }
@@ -3213,7 +3287,7 @@ export default function App() {
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
         {me && phase === "listo" && !abrirDM && !abrirTrade && <Anuncios />}
-        {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} />}
+        {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} cfgIA={cfg?.ia && !!me} />}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
             onAbrirTrade={(id) => { setTab("trades"); setVerInfractores(false); setAbrirTrade(id); }}
@@ -3287,7 +3361,7 @@ export default function App() {
         ) : tab === "mercado" ? (
           <Mercado me={me} refresh={refresh} onOffenders={() => setVerInfractores(true)} onFicha={setVerFicha}
             abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} esStaff={esStaff}
-            irAPublicar={irAPublicar}
+            irAPublicar={irAPublicar} cfgIA={cfg?.ia}
             onIrAlChat={(id) => { setTab("trades"); setAbrirTrade(id); }} stats={stats} />
         ) : tab === "inventario" ? (
           <Inventario me={me} refresh={refresh}

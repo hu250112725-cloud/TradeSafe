@@ -46,6 +46,9 @@ export async function quitarSilencio(id) { await call(`/users/${id}/unmute`, { m
 export async function cancelarTradeStaff(id, reason) { await call(`/trades/${id}/force-cancel`, { method: "POST", body: { reason } }); await sync(); }
 export const fichaModeracion = (id) => call(`/staff/user/${id}`);
 
+export const leerCapturaIA = (image) => call("/ia/ficha", { method: "POST", body: { image } });
+export const preguntarIA = (text, history) => call("/ia/chat", { method: "POST", body: { text, history } });
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {

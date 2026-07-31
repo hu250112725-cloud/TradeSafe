@@ -9,6 +9,7 @@ import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
 import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
 import { certHtml } from "../lib/cert.js";
 import { verificarGoogle, verificarFacebook, googleActivo, facebookActivo } from "../lib/social.js";
+import { leerFicha, asistente, iaActiva } from "../lib/ia.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -92,6 +93,7 @@ app.get("/api/bootstrap", async (_req, res) => {
     hasUsers: r.rows[0].n > 0,
     google: googleActivo() ? process.env.GOOGLE_CLIENT_ID : null,
     facebook: facebookActivo() ? process.env.FACEBOOK_APP_ID : null,
+    ia: iaActiva(),
   });
 });
 
@@ -785,6 +787,51 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
     } catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Imagen no válida"); }
   }
   res.json({ ok: true });
+});
+
+/* ---------- Asistencia con IA ----------
+   Con límites diarios por persona: la IA cuesta dinero y no queremos
+   que un solo usuario agote la cuota de todos. */
+const LIMITES_IA = { ficha: 25, chat: 40 };
+
+async function gastoIA(userId, kind) {
+  const r = await q(
+    `SELECT count(*)::int AS n FROM ia_usage WHERE user_id=$1 AND kind=$2 AND created_at > now() - interval '24 hours'`,
+    [userId, kind]);
+  return r.rows[0].n;
+}
+
+app.post("/api/ia/ficha", auth, needsEmail, async (req, res) => {
+  if (!iaActiva()) return err(res, "unavailable", 503, "La lectura con IA no está disponible");
+  const usado = await gastoIA(req.me.id, "ficha");
+  if (usado >= LIMITES_IA.ficha)
+    return err(res, "limit_reached", 429, `Has llegado al límite de ${LIMITES_IA.ficha} lecturas al día`);
+  const img = String(req.body?.image || "");
+  if (!IMG_RE.test(img)) return err(res, "validation_error", 422, "Imagen no válida");
+  if (img.length > 3_500_000) return err(res, "validation_error", 422, "La imagen pesa demasiado");
+  try {
+    const ficha = await leerFicha(img);
+    await q(`INSERT INTO ia_usage (user_id, kind) VALUES ($1,'ficha')`, [req.me.id]);
+    res.json({ ...ficha, restantes: LIMITES_IA.ficha - usado - 1 });
+  } catch (e) {
+    return err(res, "ia_error", 502, typeof e === "string" ? e : "La IA no pudo leer la captura");
+  }
+});
+
+app.post("/api/ia/chat", auth, needsEmail, async (req, res) => {
+  if (!iaActiva()) return err(res, "unavailable", 503, "El asistente no está disponible");
+  const usado = await gastoIA(req.me.id, "chat");
+  if (usado >= LIMITES_IA.chat)
+    return err(res, "limit_reached", 429, `Has llegado al límite de ${LIMITES_IA.chat} preguntas al día`);
+  const pregunta = String(req.body?.text || "").trim();
+  if (pregunta.length < 2) return err(res, "validation_error", 422, "Escribe tu pregunta");
+  try {
+    const respuesta = await asistente(req.body?.history, pregunta);
+    await q(`INSERT INTO ia_usage (user_id, kind) VALUES ($1,'chat')`, [req.me.id]);
+    res.json({ text: respuesta, restantes: LIMITES_IA.chat - usado - 1 });
+  } catch (e) {
+    return err(res, "ia_error", 502, typeof e === "string" ? e : "El asistente no pudo responder");
+  }
 });
 
 /* ---------- Herramientas del staff ---------- */

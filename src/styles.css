@@ -1071,3 +1071,12 @@ body.oscuro .aviso-fino { background: rgba(224,185,63,.10); color: #e7c66b; }
 }
 .menu-chat button + button { border-top: 1px solid var(--linea); }
 .menu-chat button:active { background: var(--cielo); }
+
+/* Asistente de ayuda */
+.chat-asistente {
+  max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 2px; margin-bottom: 10px;
+}
+.chat-asistente .msg { max-width: 90%; }
+.burbuja.err { background: var(--lacre-papel); color: var(--lacre); }
+body.oscuro .burbuja.err { background: rgba(255,122,82,.14); color: #ff9b7a; }
