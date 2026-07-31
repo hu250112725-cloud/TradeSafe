@@ -49,6 +49,13 @@ export const fichaModeracion = (id) => call(`/staff/user/${id}`);
 export const leerCapturaIA = (image) => call("/ia/ficha", { method: "POST", body: { image } });
 export const preguntarIA = (text, history) => call("/ia/chat", { method: "POST", body: { text, history } });
 
+export async function crearPokemon(d) { const r = await call("/pokemon", { method: "POST", body: d }); await sync(); return r.id; }
+export async function editarPokemon(id, d) { await call(`/pokemon/${id}`, { method: "POST", body: d }); await sync(); }
+export async function borrarPokemon(id) { await call(`/pokemon/${id}`, { method: "DELETE" }); await sync(); }
+export async function destacarPokemon(id) { const r = await call(`/pokemon/${id}/featured`, { method: "POST" }); await sync(); return r.featured; }
+export async function publicarPokemon(id, wants) { const r = await call(`/pokemon/${id}/list`, { method: "POST", body: { wants } }); await sync(); return r.offerId; }
+export async function retirarPokemon(id) { await call(`/pokemon/${id}/unlist`, { method: "POST" }); await sync(); }
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {

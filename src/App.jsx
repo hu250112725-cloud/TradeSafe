@@ -1423,85 +1423,220 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   );
 }
 
-/* ================= Inventario: lo mío ================= */
-function Inventario({ me, refresh, onAbrirOferta, onPublicar }) {
-  const [sub, setSub] = useState("publicadas");
-  const [detalle, setDetalle] = useState(null);
-  const { run, busy, err } = useRun(refresh);
-  const mias = api.snap.offers.filter((o) => o.ownerId === me.id);
-  const activas = mias.filter((o) => o.status === "active");
-  const cerradas = mias.filter((o) => o.status === "traded");
-  const u = userById(me.id);
-  const vitrina = u?.showcase || [];
+/* ================= Inventario: mi colección ================= */
+function FormPokemon({ inicial, cfgIA, onGuardar, onCancelar, busy }) {
+  const [f, setF] = useState(inicial || {});
+  const [leyendo, setLeyendo] = useState(false);
+  const [leido, setLeido] = useState(null);
 
-  const lista = sub === "publicadas" ? activas : sub === "intercambiadas" ? cerradas : [];
+  const leer = async () => {
+    const img = await pickImage();
+    if (!img) return;
+    setLeyendo(true); setLeido(null);
+    try {
+      let d = null;
+      if (cfgIA) {
+        try {
+          const r = await api.leerCapturaIA(img);
+          d = { especie: r.species, nivel: r.level, naturaleza: r.nature, habilidad: r.ability,
+                ball: r.ball, origen: r.origin, shiny: r.shiny, movimientos: r.moves || [], ivs: r.ivs || [] };
+        } catch { /* se intenta en local */ }
+      }
+      if (!d) { const { leerCaptura } = await import("./ocr.js"); d = await leerCaptura(img, getLang()); }
+      const n = { ...f, image: img };
+      let c = 0;
+      if (d.especie) { n.species = d.especie; c++; }
+      if (d.nivel) { n.level = d.nivel; c++; }
+      if (d.naturaleza) { n.nature = d.naturaleza; c++; }
+      if (d.habilidad) { n.ability = d.habilidad; c++; }
+      if (d.ball) { n.ball = d.ball; c++; }
+      if (d.origen) { n.origin = d.origen; c++; }
+      if (d.movimientos?.length) { n.moves = d.movimientos.join(", "); c++; }
+      if (d.ivs?.length === 6) { n.ivs = d.ivs; c++; }
+      if (d.shiny) { n.isShiny = true; c++; }
+      setF(n); setLeido(c);
+    } catch { setLeido(0); }
+    setLeyendo(false);
+  };
+
+  return (
+    <div className="ficha" style={{ marginBottom: 14 }}>
+      <button className="btn mini secundario" disabled={leyendo} onClick={leer}>
+        {leyendo ? tx().leyendoIA : "◎ " + tx().desdeCaptura}
+      </button>
+      {leido !== null && (
+        <div className="mt-10">
+          <Aviso tipo={leido > 0 ? "verde" : "oro"}>{leido > 0 ? tx().fotoLeida(leido) : tx().fotoSinDatos}</Aviso>
+        </div>
+      )}
+
+      <div className="mt-14">
+        <CampoEspecie label={tx().lblEspecie} value={f.species || ""}
+          onChange={(v) => setF({ ...f, species: v })} placeholder={tx().phEspecie} />
+        {f.species && (
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            {[false, true].map((sh) => (
+              <button key={String(sh)} className={`opcion-shiny ${!!f.isShiny === sh ? "elegida" : ""}`}
+                onClick={() => setF({ ...f, isShiny: sh })}>
+                <Sprite nombre={f.species} tam={54} shiny={sh} />
+                <span className="txt-xs">{sh ? "✦ " + tx().shinyOpc : tx().normalOpc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}><Campo label={tx().lblNivel}>
+            <input type="number" min="1" max="100" value={f.level || ""} onChange={(e) => setF({ ...f, level: e.target.value })} />
+          </Campo></div>
+          <div style={{ flex: 1 }}><Campo label={tx().lblNaturaleza}>
+            <input value={f.nature || ""} onChange={(e) => setF({ ...f, nature: e.target.value })} placeholder={tx().phNaturaleza} />
+          </Campo></div>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}><Campo label={tx().lblHabilidad}>
+            <input value={f.ability || ""} onChange={(e) => setF({ ...f, ability: e.target.value })} />
+          </Campo></div>
+          <div style={{ flex: 1 }}><Campo label={tx().lblBall}>
+            <input value={f.ball || ""} onChange={(e) => setF({ ...f, ball: e.target.value })} placeholder={tx().phBall} />
+          </Campo></div>
+        </div>
+        <Campo label={tx().lblMoves}>
+          <input value={f.moves || ""} onChange={(e) => setF({ ...f, moves: e.target.value })} placeholder={tx().phMoves} />
+        </Campo>
+        <Campo label={tx().lblOrigen}>
+          <input value={f.origin || ""} onChange={(e) => setF({ ...f, origin: e.target.value })} placeholder={tx().phOrigen} />
+        </Campo>
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="btn mini" style={{ flex: 1 }} disabled={busy || !(f.species || "").trim()}
+          onClick={() => onGuardar(f)}>{tx().guardarPk}</button>
+        <button className="btn mini secundario" onClick={onCancelar}>{tx().btnCancelar}</button>
+      </div>
+    </div>
+  );
+}
+
+function Inventario({ me, refresh, onAbrirOferta, cfgIA }) {
+  const [sub, setSub] = useState("coleccion");
+  const [detalle, setDetalle] = useState(null);
+  const [editando, setEditando] = useState(null);   // id o "nuevo"
+  const [publicando, setPublicando] = useState(null);
+  const [wants, setWants] = useState("");
+  const { run, busy, err } = useRun(refresh);
+
+  const todos = api.snap.pokemon || [];
+  const coleccion = todos.filter((p) => p.status === "owned");
+  const publicados = todos.filter((p) => p.status === "listed");
+  const cerrados = todos.filter((p) => p.status === "traded");
+  const lista = sub === "coleccion" ? coleccion : sub === "publicadas" ? publicados : cerrados;
+  const abierto = todos.find((p) => p.id === detalle);
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h1 className="h1">{tx().tabInventario}</h1>
-        <button className="btn mini" onClick={onPublicar}>{tx().nuevaOferta}</button>
+        <button className="btn mini" onClick={() => { setEditando("nuevo"); setDetalle(null); }}>{tx().anadirPokemon}</button>
       </div>
+
       <div className="tags" style={{ marginBottom: 14 }}>
-        {[["publicadas", `${tx().invPublicadas} (${activas.length})`],
-          ["intercambiadas", `${tx().invIntercambiadas} (${cerradas.length})`],
-          ["vitrina", `${tx().invVitrina} (${vitrina.length})`]].map(([id, l]) => (
-          <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`} onClick={() => setSub(id)}>{l}</button>
+        {[["coleccion", `${tx().miColeccion} (${coleccion.length})`],
+          ["publicadas", `${tx().invPublicadas} (${publicados.length})`],
+          ["intercambiadas", `${tx().invIntercambiadas} (${cerrados.length})`]].map(([id, l]) => (
+          <button key={id} className={`btn mini ${sub === id ? "" : "secundario"}`}
+            onClick={() => { setSub(id); setDetalle(null); }}>{l}</button>
         ))}
       </div>
+
       {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
-      {sub === "vitrina" ? (
-        vitrina.length === 0
-          ? <Vacio icono="★">{tx().vitrinaVacia}</Vacio>
-          : <div className="rejilla-inv">
-              {vitrina.map((v, i) => (
-                <div key={i} className="casilla-inv" style={{ cursor: "default" }}>
-                  {v.isShiny && <span className="insignia-inv izq">✦</span>}
-                  <Sprite nombre={v.species} tam={54} shiny={v.isShiny} />
-                  <span className="nom">{v.species}</span>
-                </div>
-              ))}
-            </div>
-      ) : lista.length === 0 ? (
-        <Vacio icono={sub === "publicadas" ? "▣" : "◈"}>{sub === "publicadas" ? tx().invVacio : tx().invSinTrades}</Vacio>
+      {editando && (
+        <FormPokemon
+          inicial={editando === "nuevo" ? {} : todos.find((p) => p.id === editando)}
+          cfgIA={cfgIA} busy={busy}
+          onCancelar={() => setEditando(null)}
+          onGuardar={(f) => run(async () => {
+            const datos = {
+              species: f.species, isShiny: !!f.isShiny, level: f.level ? Number(f.level) : null,
+              nature: f.nature, ability: f.ability, ball: f.ball, origin: f.origin,
+              moves: String(f.moves || "").split(",").map((m) => m.trim()).filter(Boolean),
+              ivs: f.ivs || [], image: f.image,
+            };
+            if (editando === "nuevo") await api.crearPokemon(datos);
+            else await api.editarPokemon(editando, datos);
+            setEditando(null);
+          })}
+        />
+      )}
+
+      {lista.length === 0 && !editando ? (
+        <Vacio icono={sub === "coleccion" ? "▣" : sub === "publicadas" ? "▭" : "◈"}>
+          {sub === "coleccion" ? tx().coleccionVacia : sub === "publicadas" ? tx().invVacio : tx().invSinTrades}
+        </Vacio>
       ) : (
         <>
           <div className="rejilla-inv">
-            {lista.map((o) => (
-              <button key={o.id} className="casilla-inv" onClick={() => setDetalle(detalle === o.id ? null : o.id)}>
-                {o.isShiny && <span className="insignia-inv izq">✦</span>}
-                {o.status === "traded" ? <span className="insignia-inv">✓</span>
-                  : o.inTrade ? <span className="insignia-inv">◈</span>
-                  : <span className="insignia-inv">▭</span>}
-                <Sprite nombre={o.species} tam={54} shiny={o.isShiny} />
-                <span className="nom">{o.species}</span>
+            {lista.map((p) => (
+              <button key={p.id} className="casilla-inv" onClick={() => { setDetalle(detalle === p.id ? null : p.id); setPublicando(null); }}>
+                {p.isShiny && <span className="insignia-inv izq">✦</span>}
+                {p.featured && <span className="insignia-inv">★</span>}
+                <Sprite nombre={p.species} tam={54} shiny={p.isShiny} />
+                <span className="nom">{nombreLimpio(p.species)}</span>
               </button>
             ))}
           </div>
-          {detalle && (() => {
-            const o = lista.find((x) => x.id === detalle);
-            if (!o) return null;
-            return (
-              <div className="ficha mt-14">
-                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <Sprite nombre={o.species} tam={54} shiny={o.isShiny} halo />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <b className="txt-s">{o.species}{o.isShiny ? " ★" : ""}</b>
-                    <div className="txt-xs suave">{tx().busca} {o.wants}</div>
+
+          {abierto && (
+            <div className="ficha mt-14">
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <Sprite nombre={abierto.species} tam={58} shiny={abierto.isShiny} halo />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b className="txt-s">{nombreLimpio(abierto.species)}</b>
+                  <div className="txt-xs suave">
+                    {[abierto.isShiny && "✦ Shiny", abierto.level && `${tx().nv} ${abierto.level}`, abierto.nature]
+                      .filter(Boolean).join(" · ")}
                   </div>
+                  {abierto.moves?.length > 0 && <div className="txt-xs suave">{abierto.moves.join(", ")}</div>}
                 </div>
-                {o.status === "active" && (
-                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <button className="btn mini secundario" onClick={() => onAbrirOferta(o.id)}>{tx().verOfertas}</button>
-                    <button className="btn mini peligro" disabled={busy} onClick={() => run(async () => { await api.removeOffer(o.id); setDetalle(null); })}>
-                      {tx().retirar}
+              </div>
+
+              {abierto.status === "owned" && (
+                publicando === abierto.id ? (
+                  <div className="mt-14">
+                    <Campo label={tx().lblQueBuscasEste}>
+                      <textarea value={wants} onChange={(e) => setWants(e.target.value)} placeholder={tx().phBuscas} />
+                    </Campo>
+                    <button className="btn mini" disabled={busy || wants.trim().length < 3}
+                      onClick={() => run(async () => { await api.publicarPokemon(abierto.id, wants); setPublicando(null); setWants(""); setSub("publicadas"); })}>
+                      {tx().publicarEste}
+                    </button>
+                    <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setPublicando(null)}>{tx().btnCancelar}</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                    <button className="btn mini" onClick={() => { setPublicando(abierto.id); setWants(""); }}>{tx().publicarEste}</button>
+                    <button className="btn mini secundario" disabled={busy}
+                      onClick={() => run(() => api.destacarPokemon(abierto.id))}>
+                      {abierto.featured ? tx().noDestacar : tx().destacar}
+                    </button>
+                    <button className="btn mini secundario" onClick={() => setEditando(abierto.id)}>{tx().editarPk}</button>
+                    <button className="btn mini peligro" disabled={busy}
+                      onClick={() => { if (confirm(tx().confirmBorrarPk)) run(async () => { await api.borrarPokemon(abierto.id); setDetalle(null); }); }}>
+                      {tx().borrarPk}
                     </button>
                   </div>
-                )}
-              </div>
-            );
-          })()}
+                )
+              )}
+
+              {abierto.status === "listed" && (
+                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                  <button className="btn mini secundario" onClick={() => onAbrirOferta(abierto.offerId)}>{tx().verOfertas}</button>
+                  <button className="btn mini peligro" disabled={busy}
+                    onClick={() => run(() => api.retirarPokemon(abierto.id))}>{tx().retirar}</button>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -1606,17 +1741,24 @@ function FichaUsuario({ userId, onBack, onEscribir, miId }) {
           {u.bio && <p className="txt-s mt-10">{u.bio}</p>}
         </div>
       </div>
-      {u.showcase?.length > 0 && (
-        <div className="ficha mt-14">
-          <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().vitrina}</div>
-          {u.showcase.map((v, i) => (
-            <div key={i} className="fila" style={{ padding: "5px 0" }}>
-              <span className="txt-s"><b>{v.species}</b>{v.isShiny ? " ★" : ""}</span>
-              {v.note && <span className="txt-xs suave">{v.note}</span>}
+      {(() => {
+        const dest = (api.snap.featured || []).filter((p) => p.ownerId === u.id);
+        if (!dest.length) return null;
+        return (
+          <div className="ficha mt-14">
+            <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().vitrina}</div>
+            <div className="rejilla-inv">
+              {dest.map((p) => (
+                <div key={p.id} className="casilla-inv" style={{ cursor: "default" }}>
+                  {p.isShiny && <span className="insignia-inv izq">✦</span>}
+                  <Sprite nombre={p.species} tam={52} shiny={p.isShiny} />
+                  <span className="nom">{nombreLimpio(p.species)}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        );
+      })()}
       {onEscribir && u.id !== miId && (
         <button className="btn mt-14" onClick={() => onEscribir(u.id)}>{tx().escribirA}</button>
       )}
@@ -3364,9 +3506,8 @@ export default function App() {
             irAPublicar={irAPublicar} cfgIA={cfg?.ia}
             onIrAlChat={(id) => { setTab("trades"); setAbrirTrade(id); }} stats={stats} />
         ) : tab === "inventario" ? (
-          <Inventario me={me} refresh={refresh}
-            onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }}
-            onPublicar={() => { setTab("mercado"); setIrAPublicar(Date.now()); }} />
+          <Inventario me={me} refresh={refresh} cfgIA={cfg?.ia}
+            onAbrirOferta={(id) => { setTab("mercado"); setAbrirOferta(id); }} />
         ) : tab === "trades" ? (
           <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)}
             onAbrirDM={setAbrirDM} />
