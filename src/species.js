@@ -9,6 +9,88 @@ const norm = (s) => String(s || "").toLowerCase()
 
 export const dexId = (nombre) => DEX[norm(nombre)] ?? null;
 
+/* Distancia de edición acotada: para tolerar erratas como
+   "flor enterna" por "flor eterna" o "Gengarr" por "Gengar". */
+function cerca(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return false;
+  let fila = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = fila[0]; fila[0] = i; let mejor = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = fila[j];
+      fila[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, fila[j], fila[j - 1]);
+      prev = tmp;
+      if (fila[j] < mejor) mejor = fila[j];
+    }
+    if (mejor > max) return false;   // corte temprano
+  }
+  return fila[b.length] <= max;
+}
+
+/* Claves agrupadas por longitud: así solo se comparan las que pueden
+   coincidir, en vez de recorrer el diccionario entero cada vez. */
+const porLargo = new WeakMap();
+function agrupar(dicc) {
+  let m = porLargo.get(dicc);
+  if (m) return m;
+  m = new Map();
+  for (const clave of Object.keys(dicc)) {
+    if (!m.has(clave.length)) m.set(clave.length, []);
+    m.get(clave.length).push(clave);
+  }
+  porLargo.set(dicc, m);
+  return m;
+}
+
+/* Palabras corrientes que nunca son un Pokémon: se descartan antes de
+   ponerse a comparar letra por letra. */
+const COMUNES = new Set(["busco","quiero","tengo","ofrezco","cualquier","cualquiera","cosa","buena","bueno",
+  "algo","nivel","level","shiny","normal","macho","hembra","male","female","japones","japonesa","japanese",
+  "equipo","team","para","por","con","sin","que","los","las","del","una","uno","mucho","poco","mejor",
+  "want","looking","have","offer","anything","good","best","trade","trading","please","porfa","gracias",
+  "perfecto","perfect","competitivo","competitive","legendario","legendary","evento","event"]);
+
+/* Devuelve la clave más parecida de un diccionario ya normalizado */
+function claveParecida(txt, dicc) {
+  const t = norm(txt);
+  if (!t || t.length < 5 || t.length > 30) return null;
+  if (COMUNES.has(t)) return null;
+  const max = t.length >= 12 ? 2 : 1;   // una errata por cada 6 letras, tope 2
+  const grupos = agrupar(dicc);
+  let mejor = null, mejorD = max + 1;
+  for (let L = t.length - max; L <= t.length + max; L++) {
+    for (const clave of grupos.get(L) || []) {
+      for (let d = 1; d < mejorD; d++) {
+        if (cerca(t, clave, d)) { mejorD = d; mejor = clave; break; }
+      }
+      if (mejorD === 1) return mejor;
+    }
+  }
+  return mejor;
+}
+
+/* Memoria de lo ya resuelto: las ofertas se repintan muchas veces */
+const memo = new Map();
+function recordar(clave, calcular) {
+  if (memo.has(clave)) return memo.get(clave);
+  const v = calcular();
+  if (memo.size > 800) memo.clear();
+  memo.set(clave, v);
+  return v;
+}
+
+/* Nombre oficial a partir de un texto con posibles erratas */
+function corregir(txt) {
+  if (FORMAS?.a) {
+    const k = claveParecida(txt, FORMAS.a);
+    if (k) return FORMAS.c[FORMAS.a[k]] || null;
+  }
+  const k2 = claveParecida(txt, DEX);
+  if (!k2) return null;
+  const id = DEX[k2];
+  return SPECIES.find((x) => dexId(x) === id) || null;
+}
+
 // Sprite shiny oficial servido por jsDelivr (CDN de PokéAPI/sprites)
 const CDN = "https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon";
 
@@ -19,6 +101,7 @@ export async function cargarFormas() {
   if (FORMAS) return FORMAS;
   try { FORMAS = await fetch("/formas.json").then((r) => r.json()); }
   catch { FORMAS = { a: {}, c: {} }; }
+  memo.clear();   // lo resuelto sin formas puede haber cambiado
   return FORMAS;
 }
 export const nombreForma = (id) => FORMAS?.c?.[id] || null;
@@ -28,6 +111,9 @@ export const nombreForma = (id) => FORMAS?.c?.[id] || null;
 export function idSprite(nombre) {
   const t = String(nombre || "").trim();
   if (!t) return null;
+  return recordar("s:" + t, () => idSpriteCalc(t));
+}
+function idSpriteCalc(t) {
   const forma = FORMAS?.a?.[norm(t)];
   if (forma) return forma;
   const exacto = dexId(t);
@@ -37,7 +123,9 @@ export function idSprite(nombre) {
     const f2 = FORMAS?.a?.[norm(dentro)];
     return f2 || dexId(dentro);
   }
-  return null;
+  // Último recurso: tolerar erratas
+  const corregido = corregir(t);
+  return corregido ? (FORMAS?.a?.[norm(corregido)] || dexId(corregido)) : null;
 }
 
 // Render shiny de Pokémon HOME; si no existiera, el sprite clásico shiny.
@@ -67,6 +155,9 @@ export const spriteAlt = (nombre, esShiny) => (esShiny ? spriteShinyAlt(nombre) 
 // Prueba primero combinaciones de 3 palabras (Iron Valiant, Tapu Koko) y luego de 1.
 export function detectarEspecie(texto) {
   const t = String(texto || "");
+  return recordar("d:" + t, () => detectarEspecieCalc(t));
+}
+function detectarEspecieCalc(t) {
   const palabras = t.split(/[^\p{L}\p{N}'♀♂.\-]+/u).filter(Boolean);
   // Se prueba de más palabras a menos, para que "Floette Flor Eterna"
   // gane frente a "Floette" a secas.
@@ -74,6 +165,12 @@ export function detectarEspecie(texto) {
     for (let i = 0; i + n <= palabras.length; i++) {
       const cand = palabras.slice(i, i + n).join(" ");
       if (FORMAS?.a?.[norm(cand)] || dexId(cand)) return cand;
+    }
+    // Antes de bajar a ventanas más cortas, se prueba con erratas:
+    // así "Floette flor enterna" gana sobre el "Floette" suelto.
+    for (let i = 0; i + n <= palabras.length; i++) {
+      const corregido = corregir(palabras.slice(i, i + n).join(" "));
+      if (corregido) return corregido;
     }
   }
   return null;
@@ -93,6 +190,9 @@ export function nombrePorId(id, lang = "es") {
 export function nombreLimpio(texto) {
   const t = String(texto || "").trim();
   if (!t) return t;
+  return recordar("n:" + t, () => nombreLimpioCalc(t));
+}
+function nombreLimpioCalc(t) {
   const canon = (txt) => {
     const f = FORMAS?.a?.[norm(txt)];
     if (f && FORMAS.c[f]) return FORMAS.c[f];

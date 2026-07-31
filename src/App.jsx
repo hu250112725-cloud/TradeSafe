@@ -972,7 +972,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <button className="btn secundario" onClick={() => setProponiendo(false)}>{tx().btnCancelar}</button>
           </div>
         ) : (
-          <button className="fab" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
+          <button className="btn mt-14" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
         )}
         <div style={{ height: 8 }} />
         {me && o.ownerId !== me?.id && (reportado ? (
