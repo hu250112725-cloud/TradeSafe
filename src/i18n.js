@@ -33,6 +33,7 @@ const es = {
   entre: "Entre", verConversacion: "Ver conversación",
 
   detalleOferta: "Detalle del intercambio", nuevoTrader: "Nuevo",
+  enviando: "enviando…", noEnviado: "no se envió · toca para reintentar",
   chatTrade: "Chat del intercambio", verDetalles: "Ver detalles", volverChat: "← Volver al chat",
   tuTurno: "Te toca a ti", esperando: "Esperando a la otra parte",
   pasoDe: (a, b) => `Paso ${a} de ${b}`,
@@ -379,6 +380,7 @@ const en = {
   entre: "Between", verConversacion: "View conversation",
 
   detalleOferta: "Trade details", nuevoTrader: "New trader",
+  enviando: "sending…", noEnviado: "not sent · tap to retry",
   chatTrade: "Trade chat", verDetalles: "View details", volverChat: "← Back to chat",
   tuTurno: "Your turn", esperando: "Waiting for the other side",
   pasoDe: (a, b) => `Step ${a} of ${b}`,

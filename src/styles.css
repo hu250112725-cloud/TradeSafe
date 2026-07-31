@@ -968,3 +968,8 @@ main:has(.fab) .content, .content:has(.fab) { padding-bottom: 190px; }
   padding: 5px 12px; border-radius: 8px; white-space: nowrap;
   background: var(--papel-alto); border: 1.5px solid var(--verde); color: var(--verde);
 }
+
+/* Mensajes aún sin confirmar */
+.msg.pendiente .burbuja { opacity: .6; }
+.msg.pendiente.fallo .burbuja { opacity: 1; background: var(--lacre-papel); color: var(--lacre); }
+body.oscuro .msg.pendiente.fallo .burbuja { background: rgba(255,122,82,.14); color: #ff9b7a; }

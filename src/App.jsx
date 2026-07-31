@@ -1136,6 +1136,8 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   const [hecho, setHecho] = useState(false);
   const { run, busy, err } = useRun(refresh);
   const caja = useRef(null);
+  const campoMsg = useRef(null);
+  useEffect(() => { api.setRitmo(2500); return () => api.setRitmo(8000); }, []);
   const otro = userById(t?.otherId);
   const bloqueado = (api.snap.blocked || []).includes(t?.otherId);
 
@@ -1143,15 +1145,19 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   useEffect(() => { const c = caja.current; if (c) c.scrollTop = c.scrollHeight; }, [t?.messages?.length]);
   if (!t) return null;
 
+  const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
+    (texto, conf) => api.enviarDM(t.id, texto, conf));
+  useEffect(() => { limpiar(t?.messages || []); }, [t?.messages?.length]);
+
   const enviar = async () => {
     const texto = msg.trim();
     if (!texto) return;
     setMsg("");
-    try { await api.enviarDM(t.id, texto); refresh(); }
-    catch (e) {
-      if (String(e.message).includes("táctica") || String(e.message).includes("tactic")) setOffsite(texto);
-      else { setMsg(texto); run(() => { throw e; }); }
-    }
+    campoMsg.current?.focus();
+    const r = await enviarPend(texto);
+    if (r.ok) return refresh();
+    const m = String(r.error?.message || "");
+    if (m.includes("táctica") || m.includes("tactic")) { setOffsite(texto); quitar(); }
   };
 
   return (
@@ -1206,6 +1212,15 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
         })}
       </div>
 
+      {pendientes.map((p) => (
+        <div key={p.clave} className={`msg mia pendiente ${p.estado === "error" ? "fallo" : ""}`}>
+          <div className="burbuja mia">
+            {p.text}
+            <span className="hora-msg">{p.estado === "error" ? tx().noEnviado : tx().enviando}</span>
+          </div>
+        </div>
+      ))}
+
       {offsite && (
         <div className="ficha" style={{ margin: "8px 0" }}>
           <Aviso tipo="lacre">{tx().avisoOffsite}</Aviso>
@@ -1244,9 +1259,9 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
 
       {!bloqueado && (
         <div className="chat-form">
-          <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
+          <input ref={campoMsg} className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
-          <button className="btn-enviar" disabled={busy || !msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
+          <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
         </div>
       )}
     </div>
@@ -1505,6 +1520,29 @@ function Infractores({ onBack }) {
   );
 }
 
+/* Gestiona los mensajes que aún no ha confirmado el servidor:
+   aparecen al instante en gris y se marcan si fallan. */
+function usePendientes(enviarReal) {
+  const [pendientes, setPendientes] = useState([]);
+  const enviar = async (texto, extra) => {
+    const clave = Math.random().toString(36).slice(2);
+    setPendientes((p) => [...p, { clave, text: texto, at: new Date().toISOString(), estado: "enviando" }]);
+    try {
+      await enviarReal(texto, extra);
+      setPendientes((p) => p.filter((x) => x.clave !== clave));
+      return { ok: true };
+    } catch (e) {
+      setPendientes((p) => p.map((x) => x.clave === clave ? { ...x, estado: "error" } : x));
+      return { ok: false, error: e };
+    }
+  };
+  const quitar = (clave) => setPendientes((p) => p.filter((x) => x.clave !== clave));
+  // Si el mensaje ya llegó por el estado, deja de estar pendiente
+  const limpiar = (mensajes) => setPendientes((p) =>
+    p.filter((x) => x.estado === "error" || !mensajes.some((m) => m.text === x.text && !m.system)));
+  return { pendientes, enviar, quitar, limpiar };
+}
+
 /* Barra de acción: el siguiente paso del intercambio, dentro del chat */
 function BarraAccion({ t, me, soyA, act, act2, busy, offer }) {
   const T = tx();
@@ -1643,6 +1681,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const miDisputa = api.snap.disputes.find((d) => d.tradeId === t.id);
   const puedeMediar = ["mediator", "moderator", "admin"].includes(me.role);
   const cajaChat = useRef(null);
+  const campoMsg = useRef(null);
+  // Con el chat abierto se consulta más a menudo, para que no parezca muerto
+  useEffect(() => { api.setRitmo(2500); return () => api.setRitmo(8000); }, []);
   useEffect(() => { marcarLeido(t.id); }, [t.id, t.messages?.length]);
   // Bajar al último mensaje al abrir el chat y al recibir uno nuevo
   useEffect(() => {
@@ -1651,15 +1692,19 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   }, [t.messages?.length, t.id]);
   const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
   const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
+  const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
+    (texto, conf) => api.sendMessage(t.id, texto, conf));
+  useEffect(() => { limpiar(t.messages || []); }, [t.messages?.length]);
+
   const enviar = async () => {
     const texto = msg.trim();
     if (!texto) return;
     setMsg("");
-    try { await api.sendMessage(t.id, texto); refresh(); }
-    catch (e) {
-      if (String(e.message).includes("táctica") || String(e.message).includes("tactic")) setOffsitePend(texto);
-      else { setMsg(texto); run(() => { throw e; }); }
-    }
+    campoMsg.current?.focus();          // el teclado no se cierra
+    const r = await enviarPend(texto);
+    if (r.ok) return refresh();
+    const m = String(r.error?.message || "");
+    if (m.includes("táctica") || m.includes("tactic")) { setOffsitePend(texto); quitar(); }
   };
 
   // Vista principal: chat a pantalla completa con el paso actual integrado
@@ -1735,6 +1780,15 @@ function TradeView({ trade: id, me, refresh, onBack }) {
           })}
         </div>
 
+        {pendientes.map((p) => (
+          <div key={p.clave} className={`msg mia pendiente ${p.estado === "error" ? "fallo" : ""}`}>
+            <div className="burbuja mia">
+              {p.text}
+              <span className="hora-msg">{p.estado === "error" ? tx().noEnviado : tx().enviando}</span>
+            </div>
+          </div>
+        ))}
+
         <BarraAccion t={t} me={me} soyA={soyA} act={act} act2={act2} busy={busy} offer={offer} />
 
         {offsitePend && (
@@ -1759,9 +1813,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
               ))}
             </div>
             <div className="chat-form">
-              <input className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
+              <input ref={campoMsg} className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
-              <button className="btn-enviar" disabled={busy || !msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
+              <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
             </div>
           </>
         )}
@@ -2746,14 +2800,19 @@ export default function App() {
         if (vivo) setPhase("sin-conexion");
       }
     })();
-    const iv = setInterval(async () => {
+    // Se reprograma sola: con un chat abierto va más rápido
+    let tmr;
+    const tic = async () => {
       try {
         if (api.getToken()) await api.sync();
         else if (!mostrarAcceso) await api.verPublico();
         force();
       } catch { /* red */ }
-    }, 8000);
-    return () => { vivo = false; clearInterval(iv); };
+      tmr = setTimeout(tic, api.getRitmo());
+    };
+    tmr = setTimeout(tic, api.getRitmo());
+    const iv = { close: () => clearTimeout(tmr) };
+    return () => { vivo = false; iv.close(); };
   }, []);
 
   const me = api.snap?.me ?? null;

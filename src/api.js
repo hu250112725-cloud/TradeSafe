@@ -31,6 +31,11 @@ async function call(path, opts = {}) {
   return data;
 }
 
+// Ritmo de actualización: más rápido con un chat abierto, más tranquilo si no
+let ritmo = 8000;
+export const getRitmo = () => ritmo;
+export const setRitmo = (ms) => { ritmo = ms; };
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {
@@ -77,7 +82,10 @@ export async function askMediation(id) { await call(`/trades/${id}/mediation`, {
 export async function takeMediation(id) { await call(`/trades/${id}/mediation/take`, { method: "POST" }); await sync(); }
 export async function closeMediation(id, note) { await call(`/trades/${id}/mediation/close`, { method: "POST", body: { note } }); await sync(); }
 export async function tradeAction(id, action, value, image) { await call(`/trades/${id}/action`, { method: "POST", body: { action, value, image } }); await sync(); }
-export async function sendMessage(id, text, confirmOffsite) { await call(`/trades/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
+export async function sendMessage(id, text, confirmOffsite) {
+  await call(`/trades/${id}/message`, { method: "POST", body: { text, confirmOffsite } });
+  await sync();
+}
 export async function abrirDM(userId) { const r = await call("/dm", { method: "POST", body: { userId } }); await sync(); return r.id; }
 export async function enviarDM(id, text, confirmOffsite) { await call(`/dm/${id}/message`, { method: "POST", body: { text, confirmOffsite } }); await sync(); }
 export async function reportarDM(id, reason) { await call(`/dm/${id}/report`, { method: "POST", body: { reason } }); await sync(); }
