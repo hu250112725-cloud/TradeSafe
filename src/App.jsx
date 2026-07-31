@@ -463,6 +463,40 @@ function PideCuenta({ onCrear, onCerrar }) {
   );
 }
 
+/* Anuncios del staff: lo primero que se ve al entrar.
+   Los urgentes no se pueden ocultar; el resto se recuerda por dispositivo. */
+function Anuncios() {
+  const [ocultos, setOcultos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ts_anuncios") || "[]"); } catch { return []; }
+  });
+  const lista = (api.snap.announcements || [])
+    .filter((a) => a.active !== false)
+    .filter((a) => a.level === "critical" || !ocultos.includes(a.id));
+  if (!lista.length) return null;
+
+  const ocultar = (id) => {
+    const n = [...ocultos, id].slice(-30);
+    setOcultos(n);
+    try { localStorage.setItem("ts_anuncios", JSON.stringify(n)); } catch { /* nada */ }
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {lista.map((a) => (
+        <div key={a.id} className={`anuncio ${a.level}`}>
+          <div className="anuncio-cab">
+            <b>{a.title}</b>
+            {a.level !== "critical" && (
+              <button className="anuncio-x" onClick={() => ocultar(a.id)} aria-label={tx().entendidoAnuncio}>✕</button>
+            )}
+          </div>
+          <p className="txt-s">{a.body}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ================= Autenticación ================= */
 function AuthScreen({ refresh, hasUsers, onCodigo, cfg, onCompletar }) {
   const [mode, setMode] = useState(hasUsers ? "login" : "setup");
@@ -2526,6 +2560,10 @@ function Staff({ me, refresh }) {
   const [resumen, setResumen] = useState("");
   const [nivel, setNivel] = useState("minor");
   const [emitido, setEmitido] = useState(null);
+  const [anTit, setAnTit] = useState("");
+  const [anTxt, setAnTxt] = useState("");
+  const [anNivel, setAnNivel] = useState("info");
+  const [anDias, setAnDias] = useState("");
   const { run, busy, err } = useRun(refresh);
   const esAdmin = me.role === "admin";
   const pendVerif = api.snap.users.filter((u) => !u.verified && u.status === "active");
@@ -2537,8 +2575,37 @@ function Staff({ me, refresh }) {
   return (
     <div>
       <h1 className="h1" style={{ marginBottom: 14 }}>{tx().panelStaff}</h1>
-      <div className="tags" style={{ marginBottom: 14 }}>
-        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ["reportes", tx().tReportes(reportes.length)], ["chats", tx().tReportesChat(chatsReportados.length)], ["usuarios", tx().tUsuarios], ...(esAdmin ? [["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
+
+      {(() => {
+        const items = [
+          [abiertas.length, tx().disputasCorto, "disputas"],
+          [pendVerif.length, tx().verifCorto, "verif"],
+          [apelaciones.length, tx().apelaCorto, "apela"],
+          [reportes.length, tx().reportesCorto, "reportes"],
+          [chatsReportados.length, tx().chatsCorto, "chats"],
+        ].filter(([n]) => n > 0);
+        return (
+          <div className="resumen-staff">
+            <div className="eyebrow" style={{ marginBottom: items.length ? 10 : 0 }}>{tx().resumenStaff}</div>
+            {items.length === 0
+              ? <p className="txt-s suave">{tx().todoAlDia}</p>
+              : (
+                <div className="resumen-items">
+                  {items.map(([n, etiqueta, id]) => (
+                    <button key={id} className="resumen-item" onClick={() => setPane(id)}>
+                      <span className="resumen-n">{n}</span>
+                      <span className="resumen-l">{etiqueta}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+          </div>
+        );
+      })()}
+
+      <div className="tags tabs-staff" style={{ marginBottom: 14 }}>
+        {[["disputas", tx().tDisputas(abiertas.length)], ["verif", tx().tVerif(pendVerif.length)], ["apela", tx().tApela(apelaciones.length)], ["reportes", tx().tReportes(reportes.length)], ["chats", tx().tReportesChat(chatsReportados.length)],
+    ["anuncios", tx().anuncios], ["usuarios", tx().tUsuarios], ...(esAdmin ? [["metricas", tx().tMetricas], ["audit", tx().tAudit]] : [])].map(([id, l]) => (
           <button key={id} className={`btn mini ${pane === id ? "" : "secundario"}`} onClick={() => setPane(id)}>{l}</button>
         ))}
       </div>
@@ -2656,6 +2723,63 @@ function Staff({ me, refresh }) {
             <p className="txt-s suave mt-6"><b>{tx().reportadaPor}</b> {userById(r.byId)?.displayName ?? "—"}: {r.reason}</p>
           </div>
         )))}
+
+      {pane === "anuncios" && (
+        <>
+          <div className="ficha" style={{ marginBottom: 14 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().nuevoAnuncio}</div>
+            <Campo label={tx().lblTituloAnuncio}>
+              <input value={anTit} onChange={(e) => setAnTit(e.target.value)} maxLength={80} />
+            </Campo>
+            <Campo label={tx().lblCuerpoAnuncio}>
+              <textarea value={anTxt} onChange={(e) => setAnTxt(e.target.value)} maxLength={600} />
+            </Campo>
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <Campo label={tx().lblImportancia}>
+                  <select value={anNivel} onChange={(e) => setAnNivel(e.target.value)}>
+                    <option value="info">{tx().nivelInfo}</option>
+                    <option value="warning">{tx().nivelAviso}</option>
+                    <option value="critical">{tx().nivelCritico}</option>
+                  </select>
+                </Campo>
+              </div>
+              <div style={{ flex: 1 }}>
+                <Campo label={tx().lblCaduca}>
+                  <input type="number" min="1" value={anDias} onChange={(e) => setAnDias(e.target.value)} />
+                </Campo>
+              </div>
+            </div>
+            <button className="btn" disabled={busy || anTit.trim().length < 3 || anTxt.trim().length < 3}
+              onClick={() => run(async () => {
+                await api.crearAnuncio({ title: anTit, body: anTxt, level: anNivel, days: anDias ? Number(anDias) : null });
+                setAnTit(""); setAnTxt(""); setAnDias("");
+              })}>{tx().btnPublicarAnuncio}</button>
+          </div>
+
+          {(api.snap.announcements || []).length === 0
+            ? <Vacio icono="▤">{tx().sinAnuncios}</Vacio>
+            : (api.snap.announcements || []).map((a) => (
+              <div key={a.id} className={`anuncio ${a.level}`} style={{ opacity: a.active === false ? .55 : 1 }}>
+                <div className="anuncio-cab"><b>{a.title}</b>
+                  <span className={`tag ${a.active === false ? "tenue" : "verde"}`}>
+                    {a.active === false ? tx().inactivo : tx().activo}
+                  </span>
+                </div>
+                <p className="txt-s">{a.body}</p>
+                <div className="txt-xs suave mt-6">{fecha(a.at)}{a.expiresAt ? ` · ${tx().caduca} ${fecha(a.expiresAt)}` : ""}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button className="btn mini secundario" disabled={busy} onClick={() => run(() => api.alternarAnuncio(a.id))}>
+                    {a.active === false ? tx().btnMostrar : tx().btnOcultar}
+                  </button>
+                  <button className="btn mini peligro" disabled={busy} onClick={() => run(() => api.borrarAnuncio(a.id))}>
+                    {tx().btnBorrar}
+                  </button>
+                </div>
+              </div>
+            ))}
+        </>
+      )}
 
       {pane === "usuarios" && (
         <div className="ficha">
@@ -2902,6 +3026,7 @@ export default function App() {
 
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
+        {me && phase === "listo" && <Anuncios />}
         {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} />}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
@@ -2950,6 +3075,7 @@ export default function App() {
           </>
         ) : !me ? (
           <>
+            <Anuncios />
             <div className="linea-invitado">{tx().invitado}</div>
             {pideCuenta && (
               <PideCuenta onCrear={() => { setPideCuenta(false); setMostrarAcceso(true); }}

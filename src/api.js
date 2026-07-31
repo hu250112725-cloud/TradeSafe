@@ -36,6 +36,10 @@ let ritmo = 8000;
 export const getRitmo = () => ritmo;
 export const setRitmo = (ms) => { ritmo = ms; };
 
+export async function crearAnuncio(d) { await call("/announcements", { method: "POST", body: d }); await sync(); }
+export async function alternarAnuncio(id) { await call(`/announcements/${id}/toggle`, { method: "POST" }); await sync(); }
+export async function borrarAnuncio(id) { await call(`/announcements/${id}`, { method: "DELETE" }); await sync(); }
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {

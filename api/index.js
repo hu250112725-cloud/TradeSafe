@@ -543,6 +543,9 @@ app.get("/api/state", authAny, async (req, res) => {
                ORDER BY o.id, o.created_at DESC LIMIT 30`, [me.id])
     : { rows: [] };
 
+  const anunR = esStaff
+    ? await q(`SELECT * FROM announcements ORDER BY created_at DESC LIMIT 30`)
+    : await anunciosActivos();
   const pokeR = await q(`SELECT * FROM pokemon WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [me.id]);
   const destR = await q(
     `SELECT id, owner_id, data, image_id FROM pokemon WHERE featured AND status <> 'traded' LIMIT 300`);
@@ -630,6 +633,10 @@ app.get("/api/state", authAny, async (req, res) => {
       endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
     })),
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
+    announcements: anunR.rows.map((a) => ({
+      id: a.id, title: a.title, body: a.body, level: a.level, at: a.created_at,
+      ...(esStaff ? { active: a.active, expiresAt: a.expires_at } : {}),
+    })),
     pokemon: pokeR.rows.map((p) => ({
       id: p.id, status: p.status, offerId: p.offer_id, featured: p.featured,
       imageId: p.image_id, createdAt: p.created_at, ...p.data,
@@ -769,6 +776,42 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Anuncios del staff ---------- */
+const anunciosActivos = () => q(
+  `SELECT id, title, body, level, created_at FROM announcements
+   WHERE active AND (expires_at IS NULL OR expires_at > now())
+   ORDER BY CASE level WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, created_at DESC
+   LIMIT 5`);
+
+app.post("/api/announcements", auth, staff, async (req, res) => {
+  const title = String(req.body?.title || "").trim().slice(0, 80);
+  const body = String(req.body?.body || "").trim().slice(0, 600);
+  if (title.length < 3 || body.length < 3)
+    return err(res, "validation_error", 422, "Escribe un título y un mensaje");
+  const level = ["info", "warning", "critical"].includes(req.body?.level) ? req.body.level : "info";
+  const dias = Number(req.body?.days);
+  const expira = Number.isFinite(dias) && dias > 0
+    ? new Date(Date.now() + dias * 86400000).toISOString() : null;
+  const r = await q(
+    `INSERT INTO announcements (title, body, level, created_by, expires_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [title, body, level, req.me.id, expira]);
+  await audit(req.me.id, "announcement.create", r.rows[0].id, title);
+  res.status(201).json({ id: r.rows[0].id });
+});
+
+app.post("/api/announcements/:id/toggle", auth, staff, async (req, res) => {
+  const r = await q(`UPDATE announcements SET active = NOT active WHERE id=$1 RETURNING active`, [req.params.id]);
+  if (!r.rowCount) return err(res, "not_found", 404, "Anuncio no encontrado");
+  await audit(req.me.id, "announcement.toggle", req.params.id, String(r.rows[0].active));
+  res.json({ active: r.rows[0].active });
+});
+
+app.delete("/api/announcements/:id", auth, staff, async (req, res) => {
+  await q(`DELETE FROM announcements WHERE id=$1`, [req.params.id]);
+  await audit(req.me.id, "announcement.delete", req.params.id, "Anuncio borrado");
+  res.json({ ok: true });
+});
+
 /* ---------- Escaparate público (sin cuenta) ----------
    Solo lo imprescindible para mirar el mercado. Nunca salen correos,
    claves de amigo, intercambios, mensajes ni datos de moderación. */
@@ -807,6 +850,8 @@ app.get("/api/public", async (_req, res) => {
         : u.trades_done >= 25 ? "plata" : u.trades_done >= 5 ? "bronce" : "novato",
     })),
     stats: st.rows[0],
+    announcements: (await anunciosActivos()).rows.map((a) => ({
+      id: a.id, title: a.title, body: a.body, level: a.level, at: a.created_at })),
   });
 });
 

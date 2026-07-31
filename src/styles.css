@@ -973,3 +973,44 @@ main:has(.fab) .content, .content:has(.fab) { padding-bottom: 190px; }
 .msg.pendiente .burbuja { opacity: .6; }
 .msg.pendiente.fallo .burbuja { opacity: 1; background: var(--lacre-papel); color: var(--lacre); }
 body.oscuro .msg.pendiente.fallo .burbuja { background: rgba(255,122,82,.14); color: #ff9b7a; }
+
+/* Anuncios del staff */
+.anuncio {
+  border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+  border: 1px solid var(--linea); background: var(--cielo);
+  border-left-width: 3px;
+}
+.anuncio.info { border-left-color: var(--verde); }
+.anuncio.warning { border-left-color: var(--oro); background: #fdf7e8; }
+.anuncio.critical { border-left-color: var(--lacre); background: #fdeceb; }
+.anuncio-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+.anuncio-cab b { font-size: 14px; line-height: 1.25; }
+.anuncio-x {
+  border: none; background: none; cursor: pointer; padding: 0 2px;
+  font-size: 15px; color: var(--tinta-suave); line-height: 1; flex-shrink: 0;
+}
+.anuncio .txt-s { line-height: 1.45; }
+body.oscuro .anuncio.warning { background: rgba(224,185,63,.10); }
+body.oscuro .anuncio.critical { background: rgba(255,122,82,.10); }
+
+/* Panel de staff: resumen de lo pendiente */
+.resumen-staff {
+  border: 1px solid var(--linea); border-radius: 16px; padding: 14px 16px;
+  background: var(--papel-alto); margin-bottom: 14px; box-shadow: var(--sombra);
+}
+.resumen-items { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; }
+.resumen-items::-webkit-scrollbar { display: none; }
+.resumen-item {
+  flex: 0 0 auto; min-width: 86px; cursor: pointer; font: inherit; color: inherit;
+  border: 1px solid rgba(201,58,23,.28); border-radius: 12px; background: #fdeceb;
+  padding: 10px 12px; text-align: left;
+}
+.resumen-n { display: block; font-size: 22px; font-weight: 900; line-height: 1; color: var(--lacre); }
+.resumen-l { display: block; font-size: 10.5px; color: var(--tinta-suave); margin-top: 3px; }
+body.oscuro .resumen-item { background: rgba(255,122,82,.10); border-color: rgba(255,122,82,.25); }
+body.oscuro .resumen-n { color: #ff9b7a; }
+
+/* Las pestañas del panel se desplazan en una sola fila */
+.tabs-staff { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.tabs-staff::-webkit-scrollbar { display: none; }
+.tabs-staff .btn { flex: 0 0 auto; }
