@@ -942,3 +942,29 @@ body.oscuro .fc-icono { color: #57cf90; }
 /* El botón flotante nunca debe tapar acciones */
 .fab { bottom: 96px; }
 main:has(.fab) .content, .content:has(.fab) { padding-bottom: 190px; }
+
+/* ===== Barra del paso actual: apilada y legible ===== */
+.barra-accion {
+  display: block;
+  padding: 14px 16px; border-radius: 16px; margin-top: 10px;
+}
+.barra-accion-cab {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.barra-accion-txt {
+  font-size: 13.5px; line-height: 1.45; margin: 0 0 12px;
+  color: var(--tinta); word-break: break-word;
+}
+.barra-accion-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.barra-accion-btns .btn { flex: 1; min-width: 140px; }
+.barra-accion.hecho { text-align: center; }
+.barra-accion.hecho .barra-accion-txt { margin: 0; font-size: 15px; font-weight: 700; }
+
+/* El código del intercambio, destacado y fácil de copiar a mano */
+.codigo-chip {
+  font-family: "Chivo Mono", ui-monospace, monospace;
+  font-size: 15px; font-weight: 800; letter-spacing: 2px;
+  padding: 5px 12px; border-radius: 8px; white-space: nowrap;
+  background: var(--papel-alto); border: 1.5px solid var(--verde); color: var(--verde);
+}

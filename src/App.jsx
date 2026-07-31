@@ -1529,7 +1529,7 @@ function BarraAccion({ t, me, soyA, act, act2, busy, offer }) {
     const yoProbe = soyA ? t.proofA : t.proofB;
     contenido = yoProbe
       ? { txt: T.esperando, mio: false }
-      : { txt: T.avisoPreProof(t.code), mio: true, botones: (
+      : { txt: T.pasoCaptura, mio: true, codigo: t.code, botones: (
           <button className="btn mini" disabled={busy} onClick={async () => { const i = await pickImage(); if (i) act2("proof", null, i); }}>
             {T.btnCaptura}
           </button>
@@ -1555,12 +1555,13 @@ function BarraAccion({ t, me, soyA, act, act2, busy, offer }) {
 
   return (
     <div className={`barra-accion ${contenido.mio ? "activa" : ""} ${contenido.cerrado ? "hecho" : ""}`}>
-      <div className="barra-accion-txt">
-        {!contenido.cerrado && (
+      {!contenido.cerrado && (
+        <div className="barra-accion-cab">
           <span className="eyebrow">{contenido.mio ? T.tuTurno : T.pasoDe(paso, 5)}</span>
-        )}
-        <span className="txt-s">{contenido.txt}</span>
-      </div>
+          {contenido.codigo && <span className="codigo-chip">{contenido.codigo}</span>}
+        </div>
+      )}
+      <p className="barra-accion-txt">{contenido.txt}</p>
       {contenido.botones && <div className="barra-accion-btns">{contenido.botones}</div>}
     </div>
   );
