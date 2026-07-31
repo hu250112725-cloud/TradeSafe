@@ -319,12 +319,22 @@ function Pruebas({ trade, kind, me }) {
   const list = (trade.proofs || []).filter((p) => p.kind === kind);
   if (!list.length) return null;
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
       {list.map((p) => (
-        <a key={p.id} href={api.imageUrl(p.id)} target="_blank" rel="noreferrer">
-          <img src={api.imageUrl(p.id)} alt="prueba"
-            style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `2px solid var(--tinta)` }} />
-        </a>
+        <div key={p.id}>
+          <a href={api.imageUrl(p.id)} target="_blank" rel="noreferrer">
+            <img src={api.imageUrl(p.id)} alt="prueba"
+              style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 10, border: "1px solid var(--linea)" }} />
+          </a>
+          {p.revision && (
+            <div className={`revision ${p.revision.codigoVisible && !p.revision.sospechas?.length ? "ok" : "duda"}`}
+              title={p.revision.resumen}>
+              {p.revision.codigoVisible && !p.revision.sospechas?.length
+                ? `✓ ${tx().codigoOk}`
+                : `⚠ ${p.revision.codigoVisible ? tx().revisionIA : tx().codigoNo}`}
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -1103,7 +1113,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
 }
 
 /* ================= Centro de ayuda: vídeo tutorial ================= */
-function Asistente() {
+function Asistente({ onCerrar, onIrAlChat }) {
   const [hist, setHist] = useState([]);
   const [txt, setTxt] = useState("");
   const [pensando, setPensando] = useState(false);
@@ -1125,10 +1135,25 @@ function Asistente() {
     setPensando(false);
   };
 
+  const escalar = async () => {
+    setPensando(true);
+    try {
+      const id = await api.escalarAStaff(hist, "");
+      onIrAlChat(id);
+    } catch (e) {
+      setHist([...hist, { role: "assistant", content: tErr(e.message), error: true }]);
+    }
+    setPensando(false);
+  };
+
   return (
-    <div style={{ marginTop: 14, borderTop: "1px solid var(--linea)", paddingTop: 14 }}>
-      <div className="eyebrow" style={{ marginBottom: 6 }}>{tx().asistente}</div>
-      <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().asistenteIntro}</p>
+    <div className="hoja-asistente" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="hoja-caja">
+        <div className="hoja-cab">
+          <span className="eyebrow">{tx().asistente}</span>
+          <button className="enlace-volver" onClick={onCerrar}>✕</button>
+        </div>
+        <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().asistenteIntro}</p>
 
       {hist.length > 0 && (
         <div className="chat-asistente" ref={caja}>
@@ -1154,12 +1179,18 @@ function Asistente() {
           onKeyDown={(e) => { if (e.key === "Enter") preguntar(); }} placeholder={tx().phAsistente} />
         <button className="btn-enviar" disabled={pensando || !txt.trim()} onClick={() => preguntar()}>↑</button>
       </div>
-      <p className="txt-xs suave mt-6">{tx().asistenteAviso}</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 8 }}>
+        <p className="txt-xs suave" style={{ margin: 0, flex: 1 }}>{tx().asistenteAviso}</p>
+        <button className="btn mini secundario" disabled={pensando} onClick={escalar} style={{ whiteSpace: "nowrap" }}>
+          {pensando ? tx().escalando : tx().hablarStaff}
+        </button>
+      </div>
+      </div>
     </div>
   );
 }
 
-function Ayuda({ onCerrar, cfgIA }) {
+function Ayuda({ onCerrar }) {
   return (
     <div className="ficha" style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1174,7 +1205,6 @@ function Ayuda({ onCerrar, cfgIA }) {
       </video>
       <a className="btn mini secundario mt-10" style={{ textDecoration: "none", textAlign: "center", display: "block" }}
         href={`/tutorial-${getLang()}.mp4`} download>{tx().descargarVideo}</a>
-      {cfgIA && <Asistente />}
     </div>
   );
 }
@@ -3276,6 +3306,7 @@ export default function App() {
   const [irAPublicar, setIrAPublicar] = useState(null);
   const [stats, setStats] = useState(null);
   const [verAyuda, setVerAyuda] = useState(false);
+  const [verAsistente, setVerAsistente] = useState(false);
   const [codigoNuevo, setCodigoNuevo] = useState(null);
   const [tourVisto, setTourVisto] = useState(() => {
     try { return localStorage.getItem("ts_tour") === "1"; } catch { return true; }
@@ -3429,7 +3460,7 @@ export default function App() {
       <main className="content">
         {me && me.status === "active" && phase === "listo" && <EmailBanner me={me} refresh={refresh} />}
         {me && phase === "listo" && !abrirDM && !abrirTrade && <Anuncios />}
-        {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} cfgIA={cfg?.ia && !!me} />}
+        {verAyuda && <Ayuda onCerrar={() => setVerAyuda(false)} />}
         {me && phase === "listo" && verNotis && (
           <Notificaciones avisos={avisos} noLeidas={noLeidas}
             onAbrirTrade={(id) => { setTab("trades"); setVerInfractores(false); setAbrirTrade(id); }}
@@ -3525,6 +3556,14 @@ export default function App() {
             <button className="btn mini" onClick={() => setMostrarAcceso(true)}>{tx().crearGratis}</button>
           </div>
         </nav>
+      )}
+
+      {me && phase === "listo" && cfg?.ia && !verAsistente && !abrirDM && (
+        <button className="fab-ayuda" onClick={() => setVerAsistente(true)} aria-label={tx().asistente}>?</button>
+      )}
+      {verAsistente && (
+        <Asistente onCerrar={() => setVerAsistente(false)}
+          onIrAlChat={(id) => { setVerAsistente(false); setTab("trades"); setAbrirDM(id); }} />
       )}
 
       {me && phase === "listo" && (

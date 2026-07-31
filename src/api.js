@@ -48,6 +48,7 @@ export const fichaModeracion = (id) => call(`/staff/user/${id}`);
 
 export const leerCapturaIA = (image) => call("/ia/ficha", { method: "POST", body: { image } });
 export const preguntarIA = (text, history) => call("/ia/chat", { method: "POST", body: { text, history } });
+export async function escalarAStaff(history, text) { const r = await call("/ia/escalar", { method: "POST", body: { history, text } }); await sync(); return r.threadId; }
 
 export async function crearPokemon(d) { const r = await call("/pokemon", { method: "POST", body: d }); await sync(); return r.id; }
 export async function editarPokemon(id, d) { await call(`/pokemon/${id}`, { method: "POST", body: d }); await sync(); }

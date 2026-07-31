@@ -9,7 +9,7 @@ import { hasMoney, hasOffsite, checkLegality } from "../lib/validators.js";
 import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
 import { certHtml } from "../lib/cert.js";
 import { verificarGoogle, verificarFacebook, googleActivo, facebookActivo } from "../lib/social.js";
-import { leerFicha, asistente, iaActiva } from "../lib/ia.js";
+import { leerFicha, asistente, revisarPrueba, iaActiva } from "../lib/ia.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -451,6 +451,28 @@ async function limpiarImagenes() {
 
 // Red de seguridad: si por lo que sea quedó una oferta activa con su
 // intercambio ya cerrado, se retira igualmente.
+/* Revisa una captura de prueba con la IA y guarda el veredicto junto a la
+   imagen. No bloquea el intercambio: informa a las partes y al staff. */
+async function revisarPruebaEnSegundoPlano(imageId, trade, especie) {
+  if (!iaActiva() || !imageId) return;
+  try {
+    const r = await q(`SELECT data FROM images WHERE id=$1`, [imageId]);
+    if (!r.rowCount) return;
+    const v = await revisarPrueba(r.rows[0].data, { codigo: trade.code, especie });
+    await q(`UPDATE images SET ai_check=$2 WHERE id=$1`, [imageId, JSON.stringify(v)]);
+    // Si algo no cuadra, queda constancia en el chat del intercambio
+    if (!v.codigoVisible || v.sospechas.length) {
+      const motivos = [
+        !v.esPokemon && "no parece una captura de Pokémon",
+        !v.codigoVisible && "no se ve el código del intercambio",
+        ...v.sospechas,
+      ].filter(Boolean);
+      await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+        [trade.id, "◎ Revisión automática de la captura: " + motivos.join(" · ") + ". Revísenla entre ustedes antes de continuar."]);
+    }
+  } catch (e) { console.error("revision prueba", e); }
+}
+
 async function retirarOfertasCerradas() {
   await q(`UPDATE offers o SET status='traded'
            WHERE o.status='active'
@@ -537,7 +559,7 @@ app.get("/api/state", authAny, async (req, res) => {
                ) x WHERE x.n <= 60 ORDER BY id`, [idsVivos])
     : { rows: [] };
   const proofsR = tradeIds.length
-    ? await q(`SELECT id, trade_id, owner_id, kind FROM images WHERE trade_id = ANY($1) ORDER BY created_at`, [tradeIds])
+    ? await q(`SELECT id, trade_id, owner_id, kind, ai_check FROM images WHERE trade_id = ANY($1) ORDER BY created_at`, [tradeIds])
     : { rows: [] };
   const fcByUser = Object.fromEntries(usersR.rows.map((u) => [u.id, u.friend_code]));
 
@@ -624,7 +646,8 @@ app.get("/api/state", authAny, async (req, res) => {
       aItems: t.a_items || [], bItems: t.b_items || [], mediatorId: t.mediator_id,
       state: t.state, ...t.flags, events: t.events, createdAt: t.created_at,
       messages: msgsR.rows.filter((m) => m.trade_id === t.id).map((m) => ({ by: m.sender_id, system: !m.sender_id, kind: m.kind, text: m.body, at: m.created_at })),
-      proofs: proofsR.rows.filter((p) => p.trade_id === t.id).map((p) => ({ id: p.id, by: p.owner_id, kind: p.kind })),
+      proofs: proofsR.rows.filter((p) => p.trade_id === t.id)
+        .map((p) => ({ id: p.id, by: p.owner_id, kind: p.kind, revision: p.ai_check || null })),
       ...(["in_progress", "post_proof", "disputed"].includes(t.state)
         ? { friendA: fcByUser[t.a_id] ?? null, friendB: fcByUser[t.b_id] ?? null } : {}),
     })),
@@ -816,6 +839,31 @@ app.post("/api/ia/ficha", auth, needsEmail, async (req, res) => {
   } catch (e) {
     return err(res, "ia_error", 502, typeof e === "string" ? e : "La IA no pudo leer la captura");
   }
+});
+
+/* Pasar una conversación con la IA a una persona del staff */
+app.post("/api/ia/escalar", auth, needsEmail, async (req, res) => {
+  const hist = (Array.isArray(req.body?.history) ? req.body.history : []).slice(-12);
+  const resumen = hist.map((m) => `${m.role === "assistant" ? "Asistente" : "Yo"}: ${String(m.content || "").slice(0, 300)}`).join("\n");
+  // Se elige el moderador con menos conversaciones abiertas
+  const st = await q(
+    `SELECT u.id, (SELECT count(*)::int FROM dm_threads t WHERE t.a_id=u.id OR t.b_id=u.id) AS n
+     FROM users u WHERE u.role IN ('moderator','admin') AND u.status='active' AND u.id <> $1
+     ORDER BY n ASC LIMIT 1`, [req.me.id]);
+  if (!st.rowCount) return err(res, "unavailable", 503, "No hay staff disponible ahora mismo");
+  const otro = st.rows[0].id;
+
+  const [x, y] = otro < req.me.id ? [otro, req.me.id] : [req.me.id, otro];
+  let hilo = (await q(`SELECT id FROM dm_threads WHERE a_id=$1 AND b_id=$2`, [x, y])).rows[0]?.id;
+  if (!hilo) hilo = (await q(`INSERT INTO dm_threads (a_id, b_id) VALUES ($1,$2) RETURNING id`, [x, y])).rows[0].id;
+
+  await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
+    [hilo, "◈ Conversación trasladada desde el asistente. Contexto:\n" + (resumen || "(sin mensajes previos)")]);
+  const pregunta = String(req.body?.text || "").trim().slice(0, 800);
+  if (pregunta) await q(`INSERT INTO dm_messages (thread_id, sender_id, body) VALUES ($1,$2,$3)`, [hilo, req.me.id, pregunta]);
+  await q(`UPDATE dm_threads SET last_at=now() WHERE id=$1`, [hilo]);
+  await audit(req.me.id, "ia.escalada", hilo, "Pasó del asistente al staff");
+  res.status(201).json({ threadId: hilo });
 });
 
 app.post("/api/ia/chat", auth, needsEmail, async (req, res) => {
@@ -1170,6 +1218,10 @@ app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, re
   const me = req.me.id;
   const { action, value, image } = req.body || {};
   const f = t.flags;
+  // Especie acordada, para que la revisión automática pueda compararla
+  const offerEspecie = t.offer_id
+    ? (await q(`SELECT data->>'species' AS sp FROM offers WHERE id=$1`, [t.offer_id])).rows[0]?.sp || null
+    : null;
 
   const invalid = () => err(res, "state_invalid", 409, "Acción no permitida en el estado actual");
 
@@ -1191,8 +1243,10 @@ app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, re
     }
     case "proof": {
       if (t.state !== "pre_proof") return invalid();
-      try { await saveImage(me, t.id, "proof_pre", image); }
+      let idPre;
+      try { idPre = await saveImage(me, t.id, "proof_pre", image); }
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura con el código visible"); }
+      revisarPruebaEnSegundoPlano(idPre, t, offerEspecie).catch(() => {});
       const p = soyA ? { proofA: true } : { proofB: true };
       const both = (soyA ? f.proofB : f.proofA) === true;
       await setTrade(t, p, both ? "in_progress" : "pre_proof", me, both ? "in_progress" : "proof_pre");
@@ -1207,8 +1261,10 @@ app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, re
     }
     case "confirm": {
       if (t.state !== "post_proof") return invalid();
-      try { await saveImage(me, t.id, "proof_post", image); }
+      let idPost;
+      try { idPost = await saveImage(me, t.id, "proof_post", image); }
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura final"); }
+      revisarPruebaEnSegundoPlano(idPost, t, offerEspecie).catch(() => {});
       const p = soyA ? { confirmedA: true } : { confirmedB: true };
       const both = (soyA ? f.confirmedB : f.confirmedA) === true;
       await setTrade(t, p, both ? "closed" : "post_proof", me, both ? "closed" : "confirmed");
