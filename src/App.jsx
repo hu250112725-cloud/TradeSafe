@@ -2,7 +2,7 @@ import { useState, useEffect, useReducer, useRef } from "react";
 import * as api from "./api.js";
 import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "./api.js";
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
-import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt, detectarEspecie, pideShiny } from "./species.js";
+import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt, detectarEspecie, pideShiny, cargarFormas, nombreLimpio } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
 
 /* ================= Piezas de UI ================= */
@@ -713,9 +713,9 @@ function CartaOferta({ o, me, onAbrir }) {
     <button className="ficha carta-oferta" style={{ marginBottom: 12 }} onClick={onAbrir}>
       <div className="trueque">
         <div className="lado">
-          <Sprite nombre={o.species} tam={58} shiny={o.isShiny} halo />
+          <Sprite nombre={o.species} tam={52} shiny={o.isShiny} halo />
           <div className="lado-txt">
-            <b className="nombre-pk">{o.species}</b>
+            <b className="nombre-pk">{nombreLimpio(o.species)}</b>
             <span className="sub-pk">
               {o.isShiny && <span className="marca-shiny">★ Shiny</span>}
               {detalles && <span className="suave">{detalles}</span>}
@@ -726,14 +726,14 @@ function CartaOferta({ o, me, onAbrir }) {
         <span className="flecha">⇄</span>
         <div className="lado derecha">
           <div className="lado-txt der">
-            <b className="nombre-pk">{buscado || tx().cualquierCosa}</b>
+            <b className="nombre-pk">{buscado ? nombreLimpio(buscado) : tx().cualquierCosa}</b>
             <span className="sub-pk der">
               {buscado && buscadoShiny && <span className="marca-shiny">★ Shiny</span>}
               <span className="suave">{o.wants.length > 26 ? o.wants.slice(0, 25) + "…" : o.wants}</span>
             </span>
           </div>
           {buscado
-            ? <Sprite nombre={buscado} tam={58} shiny={buscadoShiny} halo />
+            ? <Sprite nombre={buscado} tam={52} shiny={buscadoShiny} halo />
             : <span className="sprite-hueco">?</span>}
         </div>
       </div>
@@ -2735,6 +2735,8 @@ export default function App() {
         if (!vivo) return;
         setHasUsers(b.hasUsers);
         setCfg({ google: b.google, facebook: b.facebook });
+        // Las formas especiales (Flor Eterna, regionales, megas) se cargan aparte
+        cargarFormas().then(() => vivo && force()).catch(() => {});
         if (api.getToken()) { try { await api.sync(); } catch { /* sesión caducada */ } }
         if (!api.snap?.me) { try { await api.verPublico(); } catch { /* sin escaparate */ } }
         setPhase("listo");

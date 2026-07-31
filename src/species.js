@@ -12,23 +12,51 @@ export const dexId = (nombre) => DEX[norm(nombre)] ?? null;
 // Sprite shiny oficial servido por jsDelivr (CDN de PokéAPI/sprites)
 const CDN = "https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon";
 
+/* Formas especiales (Floette Flor Eterna, regionales, megas...).
+   Se descargan una vez y se guardan en memoria. */
+let FORMAS = null;
+export async function cargarFormas() {
+  if (FORMAS) return FORMAS;
+  try { FORMAS = await fetch("/formas.json").then((r) => r.json()); }
+  catch { FORMAS = { a: {}, c: {} }; }
+  return FORMAS;
+}
+export const nombreForma = (id) => FORMAS?.c?.[id] || null;
+
+/* Resuelve el número de sprite aunque el texto traiga palabras de más
+   ("Gholdengo shiny", "Basculegion macho") o sea una forma especial. */
+export function idSprite(nombre) {
+  const t = String(nombre || "").trim();
+  if (!t) return null;
+  const forma = FORMAS?.a?.[norm(t)];
+  if (forma) return forma;
+  const exacto = dexId(t);
+  if (exacto) return exacto;
+  const dentro = detectarEspecie(t);
+  if (dentro) {
+    const f2 = FORMAS?.a?.[norm(dentro)];
+    return f2 || dexId(dentro);
+  }
+  return null;
+}
+
 // Render shiny de Pokémon HOME; si no existiera, el sprite clásico shiny.
 export function spriteShiny(nombre) {
-  const id = dexId(nombre);
+  const id = idSprite(nombre);
   return id ? `${CDN}/other/home/shiny/${id}.png` : null;
 }
 export function spriteShinyAlt(nombre) {
-  const id = dexId(nombre);
+  const id = idSprite(nombre);
   return id ? `${CDN}/shiny/${id}.png` : null;
 }
 
 // Render normal de Pokémon HOME
 export function spriteNormal(nombre) {
-  const id = dexId(nombre);
+  const id = idSprite(nombre);
   return id ? `${CDN}/other/home/${id}.png` : null;
 }
 export function spriteNormalAlt(nombre) {
-  const id = dexId(nombre);
+  const id = idSprite(nombre);
   return id ? `${CDN}/${id}.png` : null;
 }
 // El que corresponda según sea shiny o no
@@ -56,4 +84,18 @@ for (const [n, id] of Object.entries(DEX)) if (!POR_ID[id]) POR_ID[id] = n;
 export function nombrePorId(id, lang = "es") {
   const objetivo = SPECIES.find((s) => dexId(s) === id);
   return objetivo || null;
+}
+
+/* Nombre limpio para mostrar: "Gholdengo shiny" → "Gholdengo".
+   Si no se reconoce nada, se deja el texto tal cual lo escribió la persona. */
+export function nombreLimpio(texto) {
+  const t = String(texto || "").trim();
+  if (!t) return t;
+  const forma = FORMAS?.a?.[norm(t)];
+  if (forma && FORMAS.c[forma]) return FORMAS.c[forma];
+  if (dexId(t)) return t;
+  const dentro = detectarEspecie(t);
+  if (!dentro) return t;
+  const f2 = FORMAS?.a?.[norm(dentro)];
+  return (f2 && FORMAS.c[f2]) || dentro;
 }

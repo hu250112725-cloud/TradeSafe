@@ -828,7 +828,7 @@ body.oscuro .opcion-shiny.elegida { background: rgba(52,194,122,.12); }
 .marca-shiny { color: var(--oro); font-weight: 700; }
 
 .flecha { font-size: 15px; color: var(--tinta-suave); opacity: .5; padding: 0 2px; }
-.sprite-hueco { width: 58px; height: 58px; font-size: 20px; }
+.sprite-hueco { width: 52px; height: 52px; font-size: 18px; }
 
 /* Pie con la reputación */
 .pie-oferta { margin-top: 12px; padding-top: 10px; }
@@ -920,3 +920,21 @@ body.oscuro .fc-icono { color: #57cf90; }
 
 /* Espacio suficiente bajo el contenido para que la barra no tape nada */
 .content { padding-bottom: 120px; }
+
+/* Los nombres largos caben en dos líneas en vez de cortarse */
+.nombre-pk {
+  white-space: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word; hyphens: auto;
+  font-size: 15px; line-height: 1.15;
+}
+.lado-txt { max-width: 100%; }
+
+/* Más sitio para el nombre: sprite algo menor y texto ajustado */
+.trueque { gap: 6px; }
+.lado { gap: 8px; }
+.nombre-pk { font-size: 14px; line-height: 1.2; -webkit-line-clamp: 2; }
+.sub-pk { font-size: 11px; }
+.flecha { font-size: 14px; padding: 0; }
+/* En pantallas estrechas se permite una línea más */
+@media (max-width: 400px) { .nombre-pk { -webkit-line-clamp: 3; font-size: 13.5px; } }
