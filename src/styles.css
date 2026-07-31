@@ -1014,3 +1014,23 @@ body.oscuro .resumen-n { color: #ff9b7a; }
 .tabs-staff { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .tabs-staff::-webkit-scrollbar { display: none; }
 .tabs-staff .btn { flex: 0 0 auto; }
+
+/* Anuncio urgente a pantalla completa */
+.modal-anuncio {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(12, 10, 9, .72); backdrop-filter: blur(3px);
+  animation: aparece .18s ease both;
+}
+.modal-caja {
+  width: 100%; max-width: 380px; text-align: center;
+  background: var(--papel-alto); border-radius: 20px; padding: 26px 22px 22px;
+  border: 1px solid var(--linea); box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+.modal-icono {
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; color: var(--lacre); background: #fdeceb;
+}
+body.oscuro .modal-icono { background: rgba(255,122,82,.14); color: #ff9b7a; }
+.modal-caja .btn { width: 100%; }

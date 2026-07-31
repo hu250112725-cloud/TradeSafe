@@ -469,16 +469,40 @@ function Anuncios() {
   const [ocultos, setOcultos] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ts_anuncios") || "[]"); } catch { return []; }
   });
-  const lista = (api.snap.announcements || [])
-    .filter((a) => a.active !== false)
-    .filter((a) => a.level === "critical" || !ocultos.includes(a.id));
-  if (!lista.length) return null;
+  // Los urgentes se muestran a pantalla completa hasta que se confirman
+  const [vistos, setVistos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ts_anuncios_vistos") || "[]"); } catch { return []; }
+  });
+  const activos = (api.snap.announcements || []).filter((a) => a.active !== false);
+  const urgente = activos.find((a) => a.level === "critical" && !vistos.includes(a.id));
+
+  const confirmar = (id) => {
+    const n = [...vistos, id].slice(-50);
+    setVistos(n);
+    try { localStorage.setItem("ts_anuncios_vistos", JSON.stringify(n)); } catch { /* nada */ }
+  };
+
+  const lista = activos.filter((a) => a.level === "critical" || !ocultos.includes(a.id));
 
   const ocultar = (id) => {
     const n = [...ocultos, id].slice(-30);
     setOcultos(n);
     try { localStorage.setItem("ts_anuncios", JSON.stringify(n)); } catch { /* nada */ }
   };
+
+  if (urgente) return (
+    <div className="modal-anuncio" role="dialog" aria-modal="true">
+      <div className="modal-caja">
+        <div className="modal-icono">⚠</div>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().nivelCritico}</div>
+        <div className="h1" style={{ fontSize: 24, lineHeight: 1.2 }}>{urgente.title}</div>
+        <p className="txt-s mt-14" style={{ lineHeight: 1.5 }}>{urgente.body}</p>
+        <button className="btn mt-14" onClick={() => confirmar(urgente.id)}>{tx().entendidoAnuncio}</button>
+      </div>
+    </div>
+  );
+
+  if (!lista.length) return null;
 
   return (
     <div style={{ marginBottom: 14 }}>
