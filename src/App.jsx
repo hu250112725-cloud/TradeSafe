@@ -825,7 +825,7 @@ function FilaEntrenador({ userId, cuando, onFicha }) {
 }
 
 /* Tarjeta del mercado: se ve de un vistazo qué se ofrece y qué se busca */
-function CartaOferta({ o, me, onAbrir }) {
+function CartaOferta({ o, me, onAbrir, indice }) {
   const dueno = userById(o.ownerId);
   const buscado = detectarEspecie(o.wants);
   const buscadoShiny = pideShiny(o.wants);
@@ -833,7 +833,7 @@ function CartaOferta({ o, me, onAbrir }) {
     .filter(Boolean).join(" · ");
   const enLinea = dueno?.lastSeen && (Date.now() - new Date(dueno.lastSeen)) / 60000 < 3;
   return (
-    <button className="ficha carta-oferta" style={{ marginBottom: 12 }} onClick={onAbrir}>
+    <button className="ficha carta-oferta" style={{ marginBottom: 12, "--i": indice ?? 0 }} onClick={onAbrir}>
       <div className="trueque">
         <div className="lado">
           <Sprite nombre={o.species} tam={52} shiny={o.isShiny} halo />
@@ -1142,8 +1142,8 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
       )}
       {offers.length === 0 ? (
         <Vacio icono="▣">{busca || soloShiny ? tx().sinCoincidencias : <>{tx().sinOfertas1}<br />{tx().sinOfertas2} <b>{tx().tabPublicar}</b>.</>}</Vacio>
-      ) : offers.map((o) => (
-        <CartaOferta key={o.id} o={o} me={me} onAbrir={() => setOpen(o.id)} />
+      ) : offers.map((o, i) => (
+        <CartaOferta key={o.id} o={o} me={me} indice={i} onAbrir={() => setOpen(o.id)} />
       ))}
       {todas.length > offers.length && (
         <button className="btn secundario" onClick={() => setTope(tope + 20)}>

@@ -376,10 +376,6 @@ body.oscuro .dia-sep { background: var(--cielo); }
 /* Entrada suave de las tarjetas del mercado */
 @keyframes aparece { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .carta-oferta { animation: aparece .22s ease both; }
-.carta-oferta:nth-child(2) { animation-delay: .03s; }
-.carta-oferta:nth-child(3) { animation-delay: .06s; }
-.carta-oferta:nth-child(4) { animation-delay: .09s; }
-.carta-oferta:nth-child(n+5) { animation-delay: .12s; }
 
 /* Brillo suave y continuo en los sellos, para que la app respire */
 @keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .82; } }
@@ -528,9 +524,12 @@ body.oscuro .btn-enviar { color: #0d1a12; }
   margin: 12px 0; opacity: .6; letter-spacing: 2px;
 }
 
+/* Las capturas de HOME son verticales: se recorta la parte útil en vez de
+   dejar franjas blancas enormes. Al tocarla se abre entera. */
 .captura-prueba {
-  width: 100%; max-height: 260px; object-fit: contain; display: block;
-  border-radius: 10px; border: 2px solid var(--tinta); background: #fff;
+  width: 100%; height: 190px; object-fit: cover; object-position: top center;
+  display: block; border-radius: 12px; border: 1px solid var(--linea);
+  background: var(--cielo);
 }
 
 /* Cabeceras de columna del mercado */
@@ -1193,3 +1192,137 @@ body.en-chat .fab-ayuda, body.en-chat .fab { display: none; }
   .barra-accion-txt { font-size: 12.5px; margin-bottom: 9px; }
 }
 body.en-chat .content { padding-bottom: 96px; }
+
+/* ============================================================
+   Lista más limpia: menos bordes, más aire, jerarquía por peso
+   ============================================================ */
+.carta-oferta {
+  border: none;
+  box-shadow: 0 1px 2px rgba(28,25,23,.05), 0 2px 10px rgba(28,25,23,.045);
+  padding: 14px;
+  border-radius: 18px;
+}
+body.oscuro .carta-oferta {
+  background: #1c1a18;
+  box-shadow: none;
+  border: 1px solid #262320;
+}
+
+/* El pie, sin línea divisoria dura */
+.pie-oferta {
+  border-top: none;
+  margin-top: 11px;
+  padding-top: 9px;
+  position: relative;
+}
+.pie-oferta::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(120,113,108,.18) 15%, rgba(120,113,108,.18) 85%, transparent);
+}
+
+/* Reputación en una línea de texto, sin píldoras que compitan */
+.pie-oferta .tag {
+  background: none; padding: 0; font-size: 11.5px; font-weight: 500;
+  color: var(--tinta-suave);
+}
+.pie-oferta .tag.verde { color: var(--verde); font-weight: 600; }
+.pie-oferta .tag.oro { color: var(--oro); font-weight: 600; }
+.pie-oferta .tags { gap: 7px; align-items: center; }
+.pie-oferta b { font-size: 12.5px; font-weight: 700; }
+/* Separadores discretos entre datos */
+.pie-oferta .tag:not(:last-child)::after { content: " ·"; opacity: .45; margin-left: 6px; }
+
+/* Los nombres, con más presencia */
+.nombre-pk { font-size: 15.5px; letter-spacing: -.25px; }
+.sub-pk { font-size: 11.5px; color: var(--tinta-suave); }
+.marca-shiny { color: var(--oro); }
+
+/* Cabeceras de columna más discretas */
+.cols-mercado { font-size: 8.5px; letter-spacing: 2.4px; opacity: .75; padding-bottom: 10px; }
+
+/* ============================================================
+   Movimiento — curvas del sistema (Material 3 / iOS)
+   ============================================================ */
+:root {
+  /* "Emphasized decelerate": entra rápido y frena suave. Es la que usan
+     Android e iOS para elementos que aparecen. */
+  --ease-entrada: cubic-bezier(.05, .7, .1, 1);
+  --ease-salida: cubic-bezier(.3, 0, .8, .15);
+  --ease-suave: cubic-bezier(.2, 0, 0, 1);
+  --t-rapido: 150ms;
+  --t-medio: 250ms;
+  --t-lento: 400ms;
+}
+
+/* Las tarjetas entran escalonadas, no todas de golpe */
+@keyframes surge {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+.carta-oferta {
+  animation: surge var(--t-medio) var(--ease-entrada) both;
+  transition: transform var(--t-rapido) var(--ease-suave), box-shadow var(--t-rapido) var(--ease-suave);
+}
+.carta-oferta:active { transform: scale(.982); }
+
+/* Cambio de pantalla: entra deslizando desde abajo */
+main > div { animation: surge var(--t-medio) var(--ease-entrada) both; }
+
+/* Las hojas suben desde abajo, como en iOS */
+@keyframes sube { from { transform: translateY(100%); } to { transform: none; } }
+.hoja-caja { animation: sube var(--t-lento) var(--ease-entrada) both; }
+.hoja-asistente, .modal-anuncio { animation: fundido var(--t-medio) var(--ease-suave) both; }
+@keyframes fundido { from { opacity: 0; } to { opacity: 1; } }
+.modal-caja { animation: aparecePop var(--t-lento) var(--ease-entrada) both; }
+@keyframes aparecePop {
+  from { opacity: 0; transform: scale(.94) translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Mensajes del chat: cada burbuja entra por su lado */
+@keyframes burbujaMia { from { opacity: 0; transform: translateX(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes burbujaSuya { from { opacity: 0; transform: translateX(-14px) scale(.96); } to { opacity: 1; transform: none; } }
+.msg.mia { animation: burbujaMia var(--t-medio) var(--ease-entrada) both; }
+.msg.suya { animation: burbujaSuya var(--t-medio) var(--ease-entrada) both; }
+
+/* Los botones responden al toque */
+.btn, .btn-enviar, .rapida, .casilla-inv, .tab, .btn-social {
+  transition: transform var(--t-rapido) var(--ease-suave), opacity var(--t-rapido) var(--ease-suave),
+              background var(--t-rapido) var(--ease-suave);
+}
+.btn:active, .btn-social:active { transform: scale(.97); }
+.btn-enviar:active { transform: scale(.9); }
+.rapida:active, .casilla-inv:active { transform: scale(.95); }
+.tab:active { transform: scale(.92); }
+
+/* La pestaña activa: el icono da un saltito */
+@keyframes rebote { 0% { transform: scale(1); } 45% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.tab.activa .ic { animation: rebote var(--t-medio) var(--ease-suave); }
+
+/* Sprites: aparecen con un fundido al cargar, sin parpadeo */
+.carta-oferta img, .bloque-pk img, .casilla-inv img {
+  animation: fundido var(--t-medio) ease both;
+}
+
+/* Los avisos y fichas que se despliegan */
+@keyframes despliega {
+  from { opacity: 0; max-height: 0; transform: translateY(-6px); }
+  to { opacity: 1; max-height: 800px; transform: none; }
+}
+.aviso, .menu-chat, .barra-accion { animation: despliega var(--t-medio) var(--ease-entrada) both; }
+
+/* Etiquetas y sellos, entrada sutil */
+@keyframes marca { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+.tag, .sello { animation: marca var(--t-rapido) var(--ease-suave) both; }
+
+/* Quien pida menos movimiento, lo tiene */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Entrada escalonada: cada tarjeta espera un poco más que la anterior */
+.carta-oferta { animation-delay: calc(min(var(--i, 0), 6) * 45ms); }

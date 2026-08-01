@@ -485,7 +485,7 @@ async function revisarPruebaAhora(imageId, trade, especie, userId) {
         ...v.sospechas,
       ].filter(Boolean);
       await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
-        [trade.id, "◎ Revisión automática: " + motivos.join(" · ")
+        [trade.id, "Revisión de la captura: " + motivos.join(" · ")
           + ". Puede ser un error de lectura; revísenlo entre ustedes antes de continuar."]);
     }
     return v;
