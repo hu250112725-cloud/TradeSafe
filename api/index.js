@@ -453,24 +453,46 @@ async function limpiarImagenes() {
 // intercambio ya cerrado, se retira igualmente.
 /* Revisa una captura de prueba con la IA y guarda el veredicto junto a la
    imagen. No bloquea el intercambio: informa a las partes y al staff. */
-async function revisarPruebaEnSegundoPlano(imageId, trade, especie) {
-  if (!iaActiva() || !imageId) return;
+/* Revisa una captura de prueba con la IA.
+   IMPORTANTE: se espera a que termine antes de responder. En un servidor sin
+   estado (Vercel) el proceso se apaga al enviar la respuesta, así que lanzarla
+   "en segundo plano" haría que no se ejecutara nunca. A cambio, la subida tarda
+   unos segundos más; por eso hay un tope de tiempo y todo falla en silencio. */
+async function revisarPruebaAhora(imageId, trade, especie, userId) {
+  if (!iaActiva() || !imageId) return null;
   try {
+    // Tope de gasto compartido: la revisión la paga la app, no el usuario
+    const gasto = await q(
+      `SELECT count(*)::int AS n FROM ia_usage WHERE kind='prueba' AND created_at > now() - interval '24 hours'`);
+    if (gasto.rows[0].n >= 400) return null;
+
     const r = await q(`SELECT data FROM images WHERE id=$1`, [imageId]);
-    if (!r.rowCount) return;
-    const v = await revisarPrueba(r.rows[0].data, { codigo: trade.code, especie });
+    if (!r.rowCount) return null;
+
+    // Si la IA tarda demasiado, se sigue sin ella: nunca bloquea el intercambio
+    const v = await Promise.race([
+      revisarPrueba(r.rows[0].data, { codigo: trade.code, especie }),
+      new Promise((_, no) => setTimeout(() => no("tiempo agotado"), 20000)),
+    ]);
+
     await q(`UPDATE images SET ai_check=$2 WHERE id=$1`, [imageId, JSON.stringify(v)]);
-    // Si algo no cuadra, queda constancia en el chat del intercambio
+    if (userId) await q(`INSERT INTO ia_usage (user_id, kind) VALUES ($1,'prueba')`, [userId]);
+
     if (!v.codigoVisible || v.sospechas.length) {
       const motivos = [
-        !v.esPokemon && "no parece una captura de Pokémon",
-        !v.codigoVisible && "no se ve el código del intercambio",
+        !v.esPokemon && "no parece una captura de Pokémon HOME",
+        !v.codigoVisible && `no se ve el código ${trade.code} en la imagen`,
         ...v.sospechas,
       ].filter(Boolean);
       await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
-        [trade.id, "◎ Revisión automática de la captura: " + motivos.join(" · ") + ". Revísenla entre ustedes antes de continuar."]);
+        [trade.id, "◎ Revisión automática: " + motivos.join(" · ")
+          + ". Puede ser un error de lectura; revísenlo entre ustedes antes de continuar."]);
     }
-  } catch (e) { console.error("revision prueba", e); }
+    return v;
+  } catch (e) {
+    console.error("revision prueba", e);
+    return null;
+  }
 }
 
 async function retirarOfertasCerradas() {
@@ -1293,7 +1315,7 @@ app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, re
       let idPre;
       try { idPre = await saveImage(me, t.id, "proof_pre", image); }
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura con el código visible"); }
-      revisarPruebaEnSegundoPlano(idPre, t, offerEspecie).catch(() => {});
+      await revisarPruebaAhora(idPre, t, offerEspecie, me);
       const p = soyA ? { proofA: true } : { proofB: true };
       const both = (soyA ? f.proofB : f.proofA) === true;
       await setTrade(t, p, both ? "in_progress" : "pre_proof", me, both ? "in_progress" : "proof_pre");
@@ -1311,7 +1333,7 @@ app.post("/api/trades/:id/action", auth, needsEmail, needsPerfil, async (req, re
       let idPost;
       try { idPost = await saveImage(me, t.id, "proof_post", image); }
       catch (e) { return err(res, "validation_error", 422, typeof e === "string" ? e : "Adjunta la captura final"); }
-      revisarPruebaEnSegundoPlano(idPost, t, offerEspecie).catch(() => {});
+      await revisarPruebaAhora(idPost, t, offerEspecie, me);
       const p = soyA ? { confirmedA: true } : { confirmedB: true };
       const both = (soyA ? f.confirmedB : f.confirmedA) === true;
       await setTrade(t, p, both ? "closed" : "post_proof", me, both ? "closed" : "confirmed");
