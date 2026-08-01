@@ -1361,6 +1361,10 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
 
   useEffect(() => { if (t) marcarLeido("dm:" + t.id); }, [t?.id, t?.messages?.length]);
   useEffect(() => { const c = caja.current; if (c) c.scrollTop = c.scrollHeight; }, [t?.messages?.length]);
+  useEffect(() => {
+    document.body.classList.add("en-chat");
+    return () => document.body.classList.remove("en-chat");
+  }, []);
   if (!t) return null;
 
   const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
@@ -2083,6 +2087,13 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   };
 
   // Vista principal: chat a pantalla completa con el paso actual integrado
+  // Mientras se ve un chat, se marca el documento para que nada flote encima
+  useEffect(() => {
+    if (modo !== "chat") return;
+    document.body.classList.add("en-chat");
+    return () => document.body.classList.remove("en-chat");
+  }, [modo]);
+
   if (modo === "chat") {
     return (
       <div className="pantalla-chat">
@@ -2097,22 +2108,22 @@ function TradeView({ trade: id, me, refresh, onBack }) {
           <span className="chat-cab-mas">›</span>
         </button>
 
-        <div className="fila-entrenador" style={{ margin: "10px 0" }}>
+        <div className="cab-chat-compacta">
           {otro?.avatarId
-            ? <img className="ent-avatar" src={api.imageUrl(otro.avatarId)} alt="" />
-            : <span className="ent-avatar ent-inicial">{(otro?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span className="ent-nombre" style={{ cursor: "default" }}>{otro?.displayName ?? "—"}</span>
-            <span className="txt-xs suave">
+            ? <img className="ent-avatar chico" src={api.imageUrl(otro.avatarId)} alt="" />
+            : <span className="ent-avatar ent-inicial chico">{(otro?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="ent-nombre chico">{otro?.displayName ?? "—"}</div>
+            <div className="txt-xs suave">
               {otro?.lastSeen ? tx().visto(haceRato(otro.lastSeen)) : ""}
               {otro?.timezone && horaEn(otro.timezone) ? ` · ${horaEn(otro.timezone)}` : ""}
-            </span>
+            </div>
           </div>
-          <span style={{ marginLeft: "auto" }}><Sello code={t.code} /></span>
+          <Sello code={t.code} />
         </div>
 
         {(soyA ? t.friendB : t.friendA) && (
-          <div style={{ marginBottom: 10 }}><ClaveChip clave={soyA ? t.friendB : t.friendA} /></div>
+          <div style={{ marginBottom: 8 }}><ClaveChip clave={soyA ? t.friendB : t.friendA} /></div>
         )}
 
         {err && <div style={{ marginBottom: 10 }}><Aviso tipo="lacre">{err}</Aviso></div>}
@@ -3625,7 +3636,7 @@ export default function App() {
         </nav>
       )}
 
-      {me && phase === "listo" && cfg?.ia && !verAsistente && !abrirDM && (
+      {me && phase === "listo" && cfg?.ia && !verAsistente && !abrirDM && !abrirTrade && (
         <button className="fab-ayuda" onClick={() => setVerAsistente(true)} aria-label={tx().asistente}><Icono tipo="chat" tam={23} grosor={1.9} /></button>
       )}
       {verAsistente && (

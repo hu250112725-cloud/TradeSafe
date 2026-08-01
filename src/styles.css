@@ -1148,3 +1148,48 @@ main > div { animation: entra .16s ease both; }
 .marca-shiny { display: inline-flex; align-items: center; gap: 4px; }
 .fc-icono, .modal-icono, .chat-cab-flecha, .flecha { display: inline-flex; align-items: center; }
 .separador-trueque { display: flex; justify-content: center; }
+
+/* Cabecera del chat: una sola fila compacta */
+.cab-chat-compacta {
+  display: flex; align-items: center; gap: 10px;
+  margin: 8px 0; min-width: 0;
+}
+.ent-avatar.chico { width: 34px; height: 34px; font-size: 14px; }
+.ent-nombre.chico {
+  font-size: 14.5px; font-weight: 800; min-height: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-chat-compacta .sello { flex-shrink: 0; font-size: 11px; padding: 4px 9px; }
+
+/* La clave de amigo, más discreta */
+.clave-chip { padding: 8px 12px; font-size: 12.5px; }
+.clave-chip .mono { font-size: 13px; letter-spacing: .5px; }
+
+/* La barra das/recibes, algo más baja */
+.chat-cab { padding: 9px 12px; }
+.chat-cab-txt { font-size: 12.5px; }
+
+/* Dentro de un chat, nada flota sobre el campo de mensaje */
+body.en-chat .fab-ayuda, body.en-chat .fab { display: none; }
+
+/* El chat aprovecha toda la altura disponible bajo la cabecera */
+/* Altura del chat: descuenta cabecera y barra inferior, con un mínimo digno */
+.pantalla-chat { height: calc(100dvh - 168px); min-height: 340px; }
+/* En pantallas cortas, las respuestas rápidas se ocultan para dar sitio */
+/* En pantallas cortas se recorta lo accesorio para que quepa la conversación */
+@media (max-height: 740px) {
+  /* Móviles pequeños: se ocultan la clave y la barra das/recibes, que
+     siguen accesibles tocando la cabecera para ver los detalles. */
+  .pantalla-chat .chat-cab-btn, .pantalla-chat .clave-chip { display: none; }
+}
+@media (max-height: 800px) {
+  .pantalla-chat .rapidas { display: none; }
+  .pantalla-chat .chat-cab { padding: 6px 10px; }
+  .pantalla-chat .chat-cab-txt { font-size: 12px; -webkit-line-clamp: 1; }
+  .cab-chat-compacta { margin: 5px 0; }
+  .cab-chat-compacta .ent-avatar { width: 30px; height: 30px; }
+  .clave-chip { padding: 6px 11px; }
+  .barra-accion { padding: 10px 13px; margin-top: 6px; }
+  .barra-accion-txt { font-size: 12.5px; margin-bottom: 9px; }
+}
+body.en-chat .content { padding-bottom: 96px; }
