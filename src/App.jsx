@@ -766,6 +766,51 @@ function Icono({ tipo, activo }) {
   );
 }
 
+/* Vibración corta al confirmar algo. Silenciosa si el móvil no la admite. */
+function vibrar(patron = 12) {
+  try { navigator.vibrate?.(patron); } catch { /* no admitido */ }
+}
+
+/* Deslizar hacia abajo para actualizar, como en cualquier app móvil */
+function usePullRefresh(onRefrescar) {
+  const [tirando, setTirando] = useState(0);
+  const [refrescando, setRefrescando] = useState(false);
+  useEffect(() => {
+    let inicio = null;
+    const UMBRAL = 70;
+    const empezar = (e) => {
+      // Solo si ya estamos arriba del todo y no dentro de un chat
+      if (window.scrollY > 4 || e.target.closest?.(".chat-mensajes, .chat-asistente")) return;
+      inicio = e.touches[0].clientY;
+    };
+    const mover = (e) => {
+      if (inicio === null || refrescando) return;
+      const d = e.touches[0].clientY - inicio;
+      if (d > 0 && window.scrollY <= 0) setTirando(Math.min(d * 0.5, UMBRAL + 20));
+    };
+    const soltar = async () => {
+      if (inicio === null) return;
+      const d = tirando;
+      inicio = null;
+      if (d >= UMBRAL) {
+        setRefrescando(true); vibrar(15);
+        try { await onRefrescar(); } catch { /* red */ }
+        setRefrescando(false);
+      }
+      setTirando(0);
+    };
+    document.addEventListener("touchstart", empezar, { passive: true });
+    document.addEventListener("touchmove", mover, { passive: true });
+    document.addEventListener("touchend", soltar);
+    return () => {
+      document.removeEventListener("touchstart", empezar);
+      document.removeEventListener("touchmove", mover);
+      document.removeEventListener("touchend", soltar);
+    };
+  }, [tirando, refrescando, onRefrescar]);
+  return { tirando, refrescando };
+}
+
 /* Barra superior compacta para pantallas de detalle */
 function BarraDetalle({ titulo, onVolver }) {
   return (
@@ -1342,6 +1387,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
     const texto = msg.trim();
     if (!texto) return;
     setMsg("");
+    vibrar(8);
     campoMsg.current?.focus();
     const r = await enviarPend(texto);
     if (r.ok) return refresh();
@@ -2034,8 +2080,8 @@ function TradeView({ trade: id, me, refresh, onBack }) {
     const c = cajaChat.current;
     if (c) c.scrollTop = c.scrollHeight;
   }, [t.messages?.length, t.id]);
-  const act = (action, value) => run(() => api.tradeAction(t.id, action, value));
-  const act2 = (action, value, image) => run(() => api.tradeAction(t.id, action, value, image));
+  const act = (action, value) => { vibrar(12); return run(() => api.tradeAction(t.id, action, value)); };
+  const act2 = (action, value, image) => { vibrar(12); return run(() => api.tradeAction(t.id, action, value, image)); };
   const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
     (texto, conf) => api.sendMessage(t.id, texto, conf));
   useEffect(() => { limpiar(t.messages || []); }, [t.messages?.length]);
@@ -2044,6 +2090,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
     const texto = msg.trim();
     if (!texto) return;
     setMsg("");
+    vibrar(8);
     campoMsg.current?.focus();          // el teclado no se cierra
     const r = await enviarPend(texto);
     if (r.ok) return refresh();
@@ -3310,7 +3357,12 @@ function Staff({ me, refresh }) {
 export default function App() {
   const [, force] = useReducer((x) => x + 1, 0);
   const refresh = () => force();
-  const [tab, setTab] = useState("mercado");
+  const [tab, setTab] = useState(() => {
+    try { return localStorage.getItem("ts_tab") || "mercado"; } catch { return "mercado"; }
+  });
+  useEffect(() => {
+    try { if (["mercado", "inventario", "trades"].includes(tab)) localStorage.setItem("ts_tab", tab); } catch { /* nada */ }
+  }, [tab]);
   const [verInfractores, setVerInfractores] = useState(false);
   const [verNotis, setVerNotis] = useState(false);
   const [abrirTrade, setAbrirTrade] = useState(null);
@@ -3326,6 +3378,10 @@ export default function App() {
   });
   const [irAPublicar, setIrAPublicar] = useState(null);
   const [stats, setStats] = useState(null);
+  const { tirando, refrescando } = usePullRefresh(async () => {
+    if (api.getToken()) await api.sync(); else await api.verPublico();
+    force();
+  });
   const [verAyuda, setVerAyuda] = useState(false);
   const [verAsistente, setVerAsistente] = useState(false);
   const [codigoNuevo, setCodigoNuevo] = useState(null);
@@ -3443,6 +3499,12 @@ export default function App() {
 
   return (
     <div className="frame">
+      {(tirando > 0 || refrescando) && (
+        <div className="pull-ind" style={{ height: refrescando ? 44 : tirando }}>
+          <span className={refrescando ? "girando" : ""} style={{ opacity: Math.min(1, tirando / 55) }}>◈</span>
+        </div>
+      )}
+
       <header className="masthead">
         <div className="wordmark">Trade<span className="safe">Safe</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3594,7 +3656,7 @@ export default function App() {
               const activo = tab === id && !verInfractores && !verFicha;
               return (
                 <button key={id} className={`tab ${activo ? "activa" : ""}`}
-                  onClick={() => { setTab(id); setVerInfractores(false); setVerFicha(null); }}>
+                  onClick={() => { vibrar(8); setTab(id); setVerInfractores(false); setVerFicha(null); }}>
                   <span className="tab-ic">
                     <Icono tipo={icono} activo={activo} />
                     {punto && <span className="tab-punto" />}

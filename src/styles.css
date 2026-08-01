@@ -1110,3 +1110,30 @@ body.oscuro .fab-ayuda { color: #08130c; }
 .revision { display: flex; align-items: center; gap: 8px; font-size: 11.5px; margin-top: 6px; }
 .revision.ok { color: var(--verde); }
 .revision.duda { color: var(--oro); }
+
+/* Indicador del gesto de actualizar */
+.pull-ind {
+  display: flex; align-items: flex-end; justify-content: center;
+  overflow: hidden; color: var(--verde); font-size: 20px;
+  transition: height .18s ease;
+}
+.pull-ind .girando { animation: gira .9s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+
+/* Zonas táctiles cómodas: mínimo 44px aunque el icono se vea menor */
+.enlace-volver, .volver-ic, .anuncio-x, .aviso-x, .msg-avatar {
+  min-height: 44px; min-width: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.msg-avatar { min-height: 0; min-width: 0; }
+.anuncio-x, .aviso-x { margin: -12px -8px; padding: 12px 8px; }
+
+/* Transición suave al cambiar de pestaña */
+main > div { animation: entra .16s ease both; }
+@keyframes entra { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { main > div { animation: none; } }
+
+/* El avatar de cabecera y los botones pequeños, con área de toque cómoda */
+.avatar-cab { width: 40px; height: 40px; font-size: 15px; }
+.ent-nombre { min-height: 44px; display: inline-flex; align-items: center; }
+.btn.mini { min-height: 40px; }
