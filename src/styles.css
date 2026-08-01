@@ -1137,3 +1137,14 @@ main > div { animation: entra .16s ease both; }
 .avatar-cab { width: 40px; height: 40px; font-size: 15px; }
 .ent-nombre { min-height: 44px; display: inline-flex; align-items: center; }
 .btn.mini { min-height: 40px; }
+
+/* Iconos SVG: alineados con el texto que acompañan */
+.ic { flex-shrink: 0; vertical-align: -.15em; }
+.btn .ic, .rapida .ic, .tag .ic { margin-right: 2px; }
+.btn, .btn.mini { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.volver-ic, .enlace-volver { color: var(--tinta); }
+.tab .ic { transition: stroke-width .15s ease; }
+.tab.activa .ic { color: var(--verde); }
+.marca-shiny { display: inline-flex; align-items: center; gap: 4px; }
+.fc-icono, .modal-icono, .chat-cab-flecha, .flecha { display: inline-flex; align-items: center; }
+.separador-trueque { display: flex; justify-content: center; }

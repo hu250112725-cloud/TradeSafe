@@ -4,6 +4,7 @@ import { fecha, hora, horaEn, diaCorto, mismoDia, userById, sanctionsOf } from "
 import { tx, tErr, tSys, stateLabel, getLang, setLang } from "./i18n.js";
 import { SPECIES, spriteShiny, sprite as spriteDe, spriteAlt, detectarEspecie, pideShiny, cargarFormas, nombreLimpio } from "./species.js";
 import { dibujarTarjeta, aBlob } from "./card.js";
+import { Icono, IconoLleno } from "./iconos.jsx";
 
 /* ================= Piezas de UI ================= */
 const Sello = ({ code, verde, grande }) => (
@@ -254,7 +255,7 @@ function Notificaciones({ avisos, noLeidas, onAbrirTrade, onAbrirDM, onIrTab, on
     <div className="ficha" style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div className="eyebrow">{tx().notiTitulo}</div>
-        <button className="enlace-volver" onClick={onCerrar}>✕</button>
+        <button className="enlace-volver" onClick={onCerrar} aria-label="✕"><Icono tipo="cerrar" tam={17} /></button>
       </div>
       {permiso === "default" && (
         <button className="btn mini secundario" style={{ marginBottom: 10 }}
@@ -512,7 +513,7 @@ function Anuncios() {
   if (urgente) return (
     <div className="modal-anuncio" role="dialog" aria-modal="true">
       <div className="modal-caja">
-        <div className="modal-icono">⚠</div>
+        <div className="modal-icono"><Icono tipo="aviso" tam={26} grosor={1.9} /></div>
         <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().nivelCritico}</div>
         <div className="h1" style={{ fontSize: 24, lineHeight: 1.2 }}>{urgente.title}</div>
         <p className="txt-s mt-14" style={{ lineHeight: 1.5 }}>{urgente.body}</p>
@@ -530,7 +531,7 @@ function Anuncios() {
           <div className="anuncio-cab">
             <b>{a.title}</b>
             {a.level !== "critical" && (
-              <button className="anuncio-x" onClick={() => ocultar(a.id)} aria-label={tx().entendidoAnuncio}>✕</button>
+              <button className="anuncio-x" onClick={() => ocultar(a.id)} aria-label={tx().entendidoAnuncio}><Icono tipo="cerrar" tam={15} /></button>
             )}
           </div>
           <p className="txt-s">{a.body}</p>
@@ -750,22 +751,6 @@ function Publicar({ refresh, done, cfgIA }) {
   );
 }
 
-/* Iconos de la barra inferior, en trazo fino */
-const ICONOS = {
-  inicio: "M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5",
-  inventario: "M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9ZM3.5 7.5 12 12m0 9v-9m8.5-4.5L12 12",
-  buzon: "M4 5.5h16v10H8.5L4 19.5v-14Z",
-};
-function Icono({ tipo, activo }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-      stroke={activo ? "var(--verde)" : "currentColor"} strokeWidth="1.7"
-      strokeLinecap="round" strokeLinejoin="round">
-      <path d={ICONOS[tipo]} />
-    </svg>
-  );
-}
-
 /* Vibración corta al confirmar algo. Silenciosa si el móvil no la admite. */
 function vibrar(patron = 12) {
   try { navigator.vibrate?.(patron); } catch { /* no admitido */ }
@@ -779,7 +764,6 @@ function usePullRefresh(onRefrescar) {
     let inicio = null;
     const UMBRAL = 70;
     const empezar = (e) => {
-      // Solo si ya estamos arriba del todo y no dentro de un chat
       if (window.scrollY > 4 || e.target.closest?.(".chat-mensajes, .chat-asistente")) return;
       inicio = e.touches[0].clientY;
     };
@@ -815,7 +799,7 @@ function usePullRefresh(onRefrescar) {
 function BarraDetalle({ titulo, onVolver }) {
   return (
     <div className="barra-det">
-      <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
+      <button className="volver-ic" onClick={onVolver} aria-label="←"><Icono tipo="atras" tam={22} /></button>
       <span className="barra-det-tit">{titulo}</span>
       <span style={{ width: 30 }} />
     </div>
@@ -856,18 +840,18 @@ function CartaOferta({ o, me, onAbrir }) {
           <div className="lado-txt">
             <b className="nombre-pk">{nombreLimpio(o.species)}</b>
             <span className="sub-pk">
-              {o.isShiny && <span className="marca-shiny">★ Shiny</span>}
+              {o.isShiny && <span className="marca-shiny"><IconoLleno tipo="brillo" tam={12} /> Shiny</span>}
               {detalles && <span className="suave">{detalles}</span>}
               {o.level && <span className="suave">{tx().nv} {o.level}</span>}
             </span>
           </div>
         </div>
-        <span className="flecha">⇄</span>
+        <span className="flecha"><Icono tipo="trueque" tam={17} grosor={1.6} /></span>
         <div className="lado derecha">
           <div className="lado-txt der">
             <b className="nombre-pk">{buscado ? nombreLimpio(buscado) : tx().cualquierCosa}</b>
             <span className="sub-pk der">
-              {buscado && buscadoShiny && <span className="marca-shiny">★ Shiny</span>}
+              {buscado && buscadoShiny && <span className="marca-shiny"><IconoLleno tipo="brillo" tam={12} /> Shiny</span>}
               <span className="suave">{o.wants.length > 26 ? o.wants.slice(0, 25) + "…" : o.wants}</span>
             </span>
           </div>
@@ -937,7 +921,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
     return (
       <div>
         <div className="barra-det">
-          <button className="volver-ic" onClick={() => setOpen(null)} aria-label="←">‹</button>
+          <button className="volver-ic" onClick={() => setOpen(null)} aria-label="←"><Icono tipo="atras" tam={22} /></button>
           <span className="barra-det-tit">{tx().detalleOferta}</span>
           <button className="volver-ic" style={{ fontSize: 20 }} aria-label={tx().compartir}
             onClick={async () => {
@@ -947,7 +931,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
                 if (navigator.share) await navigator.share({ title: "TradeSafe", text: texto, url });
                 else { await navigator.clipboard.writeText(`${texto}\n${url}`); setCopiadoLink(true); setTimeout(() => setCopiadoLink(false), 2500); }
               } catch { /* el usuario canceló */ }
-            }}>↗</button>
+            }}><Icono tipo="compartir" tam={19} /></button>
         </div>
         {copiadoLink && <div style={{ marginBottom: 10 }}><Aviso tipo="verde">{tx().enlaceCopiado}</Aviso></div>}
         <FilaEntrenador userId={o.ownerId} cuando={o.createdAt} onFicha={onFicha} />
@@ -958,7 +942,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <Sprite nombre={o.species} tam={62} shiny={o.isShiny} halo />
             <div style={{ minWidth: 0 }}>
               <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{nombreLimpio(o.species)}</div>
-              {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
+              {o.isShiny && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 5 }}><IconoLleno tipo="brillo" tam={14} /> Shiny</div>}
               {o.inTrade && <span className="tag oro mt-6" style={{ display: "inline-block" }}>{tx().enTrato}</span>}
             </div>
           </div>
@@ -1004,7 +988,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           )}
         </div>
 
-        <div className="separador-trueque">⇅</div>
+        <div className="separador-trueque"><Icono tipo="abajo" tam={20} grosor={1.6} /></div>
 
         {/* BUSCA */}
         <div className="ficha bloque-pk">
@@ -1016,7 +1000,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
                 {b ? <Sprite nombre={b} tam={62} shiny={bs} halo /> : <span className="sprite-hueco" style={{ width: 62, height: 62, fontSize: 24 }}>?</span>}
                 <div style={{ minWidth: 0 }}>
                   <div className="h1" style={{ lineHeight: 1.15, fontSize: 26 }}>{b ? nombreLimpio(b) : tx().cualquierCosa}</div>
-                  {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14 }}>✦ Shiny</div>}
+                  {b && bs && <div style={{ color: "var(--oro)", fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 5 }}><IconoLleno tipo="brillo" tam={14} /> Shiny</div>}
                 </div>
               </div>
             );
@@ -1058,7 +1042,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
             <button className="btn secundario" onClick={() => setProponiendo(false)}>{tx().btnCancelar}</button>
           </div>
         ) : (
-          <button className="btn mt-14" onClick={() => setProponiendo(true)}>➤ {tx().empezarChat}</button>
+          <button className="btn mt-14" onClick={() => setProponiendo(true)}><Icono tipo="enviar" tam={16} /> {tx().empezarChat}</button>
         )}
         <div style={{ height: 8 }} />
         {me && o.ownerId !== me?.id && (reportado ? (
@@ -1118,7 +1102,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
           onChange={(e) => { setBusca(e.target.value); setTope(20); }} placeholder={tx().phBuscar} />
         <button className={`btn mini ${nFiltros ? "" : "secundario"}`} style={{ whiteSpace: "nowrap" }}
           onClick={() => setVerFiltros(!verFiltros)}>
-          ⚙ {tx().filtros}{nFiltros ? ` (${nFiltros})` : ""}
+          <Icono tipo="filtro" tam={15} /> {tx().filtros}{nFiltros ? ` (${nFiltros})` : ""}
         </button>
       </div>
 
@@ -1146,7 +1130,7 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
 
       {stats && stats.cerrados > 0 && (
         <div className="franja-confianza">
-          <span className="fc-icono">◈</span>
+          <span className="fc-icono"><Icono tipo="escudo" tam={18} /></span>
           <span><b>{tx().franjaSegura(stats.cerrados)}</b><span className="suave"> · {tx().franjaProtegido}</span></span>
         </div>
       )}
@@ -1210,7 +1194,7 @@ function Asistente({ onCerrar, onIrAlChat }) {
       <div className="hoja-caja">
         <div className="hoja-cab">
           <span className="eyebrow">{tx().asistente}</span>
-          <button className="enlace-volver" onClick={onCerrar}>✕</button>
+          <button className="enlace-volver" onClick={onCerrar} aria-label="✕"><Icono tipo="cerrar" tam={17} /></button>
         </div>
         <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().asistenteIntro}</p>
 
@@ -1236,7 +1220,7 @@ function Asistente({ onCerrar, onIrAlChat }) {
       <div className="chat-form" style={{ borderRadius: 999, border: "1px solid var(--linea)", padding: 6 }}>
         <input className="chat-input" value={txt} onChange={(e) => setTxt(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") preguntar(); }} placeholder={tx().phAsistente} />
-        <button className="btn-enviar" disabled={pensando || !txt.trim()} onClick={() => preguntar()}>↑</button>
+        <button className="btn-enviar" disabled={pensando || !txt.trim()} onClick={() => preguntar()}><Icono tipo="enviar" tam={18} /></button>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 8 }}>
         <p className="txt-xs suave" style={{ margin: 0, flex: 1 }}>{tx().asistenteAviso}</p>
@@ -1254,7 +1238,7 @@ function Ayuda({ onCerrar }) {
     <div className="ficha" style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <div className="eyebrow">{tx().ayuda}</div>
-        <button className="enlace-volver" onClick={onCerrar}>✕</button>
+        <button className="enlace-volver" onClick={onCerrar} aria-label="✕"><Icono tipo="cerrar" tam={17} /></button>
       </div>
       <video controls playsInline preload="metadata" poster={`/poster-${getLang()}.jpg`}
         style={{ display: "block", width: "100%", maxHeight: "58vh", aspectRatio: "9 / 16",
@@ -1398,9 +1382,9 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   return (
     <div className="pantalla-chat">
       <div className="barra-det" style={{ paddingBottom: 8 }}>
-        <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
+        <button className="volver-ic" onClick={onVolver} aria-label="←"><Icono tipo="atras" tam={22} /></button>
         <span className="barra-det-tit">{tx().chatDirecto}</span>
-        <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setMenu(!menu)} aria-label="⋯">⋯</button>
+        <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setMenu(!menu)} aria-label="⋯"><Icono tipo="puntos" tam={20} /></button>
       </div>
 
       {menu && (
@@ -1428,7 +1412,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
           setAvisoVisto(true);
           try { localStorage.setItem("ts_aviso_dm", "1"); } catch { /* nada */ }
         }}>
-          <span>⚠ {tx().avisoDirecto}</span><span className="aviso-x">✕</span>
+          <span>⚠ {tx().avisoDirecto}</span><span className="aviso-x"><Icono tipo="cerrar" tam={14} /></span>
         </button>
       )}
       {err && <div style={{ marginBottom: 8 }}><Aviso tipo="lacre">{err}</Aviso></div>}
@@ -1506,7 +1490,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
         <div className="chat-form">
           <input ref={campoMsg} className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
-          <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
+          <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}><Icono tipo="enviar" tam={18} /></button>
         </div>
       )}
     </div>
@@ -2008,7 +1992,7 @@ function CabeceraChat({ t, offer, soyA }) {
           </span>
         )}
       </div>
-      <span className="chat-cab-flecha">⇄</span>
+      <span className="chat-cab-flecha"><Icono tipo="trueque" tam={16} grosor={1.6} /></span>
       <div className="chat-cab-lado der">
         <span className="chat-cab-lbl">{tx().tuRecibes}</span>
         {soyA ? (
@@ -2033,7 +2017,7 @@ function ClaveChip({ clave }) {
       try { await navigator.clipboard.writeText(clave); } catch { /* sin permiso */ }
       setCopiada(true); setTimeout(() => setCopiada(false), 2000);
     }}>
-      <span className="mono">⚿ {clave}</span>
+      <span className="mono" style={{ display: "flex", alignItems: "center", gap: 7 }}><Icono tipo="llave" tam={16} /> {clave}</span>
       <span className="txt-xs">{copiada ? tx().claveCopiada : tx().copiarClave}</span>
     </button>
   );
@@ -2103,9 +2087,9 @@ function TradeView({ trade: id, me, refresh, onBack }) {
     return (
       <div className="pantalla-chat">
         <div className="barra-det" style={{ paddingBottom: 8 }}>
-          <button className="volver-ic" onClick={onBack} aria-label="←">‹</button>
+          <button className="volver-ic" onClick={onBack} aria-label="←"><Icono tipo="atras" tam={22} /></button>
           <span className="barra-det-tit">{tx().chatTrade}</span>
-          <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setModo("detalles")} aria-label={tx().verDetalles}>⋯</button>
+          <button className="volver-ic" style={{ fontSize: 19 }} onClick={() => setModo("detalles")} aria-label={tx().verDetalles}><Icono tipo="puntos" tam={20} /></button>
         </div>
 
         <button className="chat-cab-btn" onClick={() => setModo("detalles")}>
@@ -2206,7 +2190,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             <div className="chat-form">
               <input ref={campoMsg} className="chat-input" value={msg} onChange={(e) => setMsg(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} placeholder={tx().phMensaje} />
-              <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}>↑</button>
+              <button className="btn-enviar" disabled={!msg.trim()} onClick={enviar} aria-label={tx().enviarMsg}><Icono tipo="enviar" tam={18} /></button>
             </div>
           </>
         )}
@@ -2217,7 +2201,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   return (
     <div>
       <div className="barra-det">
-        <button className="volver-ic" onClick={() => setModo("chat")} aria-label="←">‹</button>
+        <button className="volver-ic" onClick={() => setModo("chat")} aria-label="←"><Icono tipo="atras" tam={22} /></button>
         <span className="barra-det-tit">{tx().detalleOferta}</span>
         <span style={{ width: 34 }} />
       </div>
@@ -2274,7 +2258,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
             <button className="btn mini secundario" style={{ marginLeft: 8 }} onClick={() => setCancelando(false)}>{tx().btnCancelar}</button>
           </div>
         ) : (
-          <button className="btn mini secundario mt-14" onClick={() => setCancelando(true)}>⚑ {tx().cancelarTrade}</button>
+          <button className="btn mini secundario mt-14" onClick={() => setCancelando(true)}><Icono tipo="bandera" tam={15} /> {tx().cancelarTrade}</button>
         )
       )}
 
@@ -2920,7 +2904,7 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
         </div>
       </div>
       {["moderator", "admin"].includes(me.role) && onStaff && (
-        <button className="btn secundario mt-14" onClick={onStaff}>{tx().panelStaffBtn}</button>
+        <button className="btn secundario mt-14" onClick={onStaff}><Icono tipo="escudo" tam={16} /> {tx().panelStaffBtn.replace("◈ ", "")}</button>
       )}
       <button className="btn secundario mt-14" onClick={() => { api.logout(); refresh(); }}>{tx().btnSalir}</button>
     </div>
@@ -2947,7 +2931,7 @@ function FichaModeracion({ userId, onVolver, refresh }) {
   return (
     <div>
       <div className="barra-det">
-        <button className="volver-ic" onClick={onVolver} aria-label="←">‹</button>
+        <button className="volver-ic" onClick={onVolver} aria-label="←"><Icono tipo="atras" tam={22} /></button>
         <span className="barra-det-tit">{tx().fichaMod}</span>
         <span style={{ width: 34 }} />
       </div>
@@ -3511,7 +3495,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button className="enlace-volver" style={{ fontSize: 17, textDecoration: "none", lineHeight: 1,
               border: "2px solid var(--tinta)", borderRadius: 999, width: 27, height: 27, fontWeight: 700 }}
-              onClick={() => { setVerAyuda(!verAyuda); setVerNotis(false); }} aria-label={tx().ayuda}>?</button>
+              onClick={() => { setVerAyuda(!verAyuda); setVerNotis(false); }} aria-label={tx().ayuda}><Icono tipo="ayuda" tam={19} /></button>
             {me && phase === "listo" && (
               <button className="enlace-volver" style={{ fontSize: 20, textDecoration: "none", position: "relative", lineHeight: 1 }}
                 onClick={() => { setVerNotis(!verNotis); setVerAyuda(false); }} aria-label={tx().notiTitulo}>
@@ -3642,7 +3626,7 @@ export default function App() {
       )}
 
       {me && phase === "listo" && cfg?.ia && !verAsistente && !abrirDM && (
-        <button className="fab-ayuda" onClick={() => setVerAsistente(true)} aria-label={tx().asistente}>?</button>
+        <button className="fab-ayuda" onClick={() => setVerAsistente(true)} aria-label={tx().asistente}><Icono tipo="chat" tam={23} grosor={1.9} /></button>
       )}
       {verAsistente && (
         <Asistente onCerrar={() => setVerAsistente(false)}
@@ -3658,7 +3642,7 @@ export default function App() {
                 <button key={id} className={`tab ${activo ? "activa" : ""}`}
                   onClick={() => { vibrar(8); setTab(id); setVerInfractores(false); setVerFicha(null); }}>
                   <span className="tab-ic">
-                    <Icono tipo={icono} activo={activo} />
+                    <Icono tipo={icono} tam={22} grosor={activo ? 2 : 1.7} />
                     {punto && <span className="tab-punto" />}
                   </span>
                   <span className="tab-tx">{label}</span>
