@@ -1628,6 +1628,16 @@ function Inventario({ me, refresh, onAbrirOferta, cfgIA }) {
 
       {err && <div style={{ marginBottom: 14 }}><Aviso tipo="lacre">{err}</Aviso></div>}
 
+      {(() => {
+        const arch = (api.snap.offers || []).filter((o) => o.ownerId === me.id && o.status === "expired");
+        if (!arch.length) return null;
+        return (
+          <div style={{ marginBottom: 14 }}>
+            <Aviso tipo="oro"><b>{tx().ofertasArchivadas(arch.length)}</b> · {tx().archivadasTxt}</Aviso>
+          </div>
+        );
+      })()}
+
       {editando && (
         <FormPokemon
           inicial={editando === "nuevo" ? {} : todos.find((p) => p.id === editando)}

@@ -505,7 +505,8 @@ async function retirarOfertasCerradas() {
              AND EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id AND o.status='traded')`);
   await q(`UPDATE pokemon p SET status='owned', offer_id=NULL
            WHERE p.status='listed'
-             AND NOT EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id AND o.status='active')`);
+             AND NOT EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id
+                             AND o.status IN ('active','expired'))`);
 }
 
 async function expireStale() {
@@ -516,6 +517,32 @@ async function expireStale() {
   await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
            WHERE state IN ('in_progress','post_proof')
            AND (events->-1->>'at')::timestamptz < now() - interval '21 days'`);
+
+  /* Ofertas de gente que ya no entra: se archivan a los 7 días sin conectarse.
+     Se mide por la última conexión del dueño, no por la fecha de publicación,
+     así una oferta antigua de alguien activo sigue viva. Nunca se tocan las
+     que están en un intercambio en marcha. */
+  await q(`UPDATE offers o SET status='expired'
+           WHERE o.status='active'
+             AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.owner_id
+                         AND COALESCE(u.last_seen, u.created_at) < now() - interval '7 days')
+             AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.offer_id = o.id
+                             AND t.state NOT IN ('closed','cancelled'))`);
+  // El Pokémon vuelve al inventario del dueño, disponible para republicar
+  await q(`UPDATE pokemon p SET status='owned', offer_id=NULL
+           WHERE p.status='listed'
+             AND EXISTS (SELECT 1 FROM offers o WHERE o.id = p.offer_id AND o.status='expired')`);
+
+  /* Al volver a conectarse, sus ofertas archivadas se reactivan solas */
+  await q(`UPDATE offers o SET status='active'
+           WHERE o.status='expired'
+             AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.owner_id
+                         AND u.last_seen > now() - interval '7 days')`);
+  await q(`UPDATE pokemon p SET status='listed', offer_id=o.id
+           FROM offers o
+           WHERE o.status='active' AND p.status='owned' AND p.owner_id = o.owner_id
+             AND p.data->>'species' = o.data->>'species'
+             AND NOT EXISTS (SELECT 1 FROM pokemon x WHERE x.offer_id = o.id)`);
 }
 
 /* ---------- Estado (una sola llamada trae todo lo visible) ---------- */
@@ -523,8 +550,14 @@ let ultimaLimpieza = 0;
 app.get("/api/state", authAny, async (req, res) => {
   // Presencia: se actualiza como mucho una vez por minuto para no castigar la base
   const tz = /^[A-Za-z_+\-\/]{3,60}$/.test(String(req.query.tz || "")) ? String(req.query.tz) : null;
-  if (!req.me.last_seen || Date.now() - new Date(req.me.last_seen) > 60000 || (tz && tz !== req.me.timezone))
-    q(`UPDATE users SET last_seen=now(), timezone=COALESCE($2, timezone) WHERE id=$1`, [req.me.id, tz]).catch(() => {});
+  const inactivo = !req.me.last_seen
+    || (Date.now() - new Date(req.me.last_seen)) > 7 * 86400000;
+  if (!req.me.last_seen || Date.now() - new Date(req.me.last_seen) > 60000 || (tz && tz !== req.me.timezone)) {
+    // Si volvía tras una ausencia larga, se espera a marcar la presencia antes
+    // de limpiar: así sus ofertas archivadas se reactivan en esta misma llamada.
+    const marcar = q(`UPDATE users SET last_seen=now(), timezone=COALESCE($2, timezone) WHERE id=$1`, [req.me.id, tz]);
+    if (inactivo) await marcar.catch(() => {}); else marcar.catch(() => {});
+  }
   await expireStale();
   // Limpieza de imágenes como mucho una vez por hora por instancia
   if (Date.now() - ultimaLimpieza > 3600000) {
