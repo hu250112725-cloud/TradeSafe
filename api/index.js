@@ -10,6 +10,7 @@ import { sendMail, mailCodigo, mailAviso, mailActivo } from "../lib/mail.js";
 import { certHtml } from "../lib/cert.js";
 import { verificarGoogle, verificarFacebook, googleActivo, facebookActivo } from "../lib/social.js";
 import { leerFicha, asistente, revisarPrueba, iaActiva } from "../lib/ia.js";
+import { enviarPush, enviarPushVarios, pushActivo, clavePublica } from "../lib/push.js";
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
@@ -72,7 +73,31 @@ const needsEmail = (req, res, next) => req.me.email_verified !== false ? next()
 const staff = (req, res, next) => ["moderator", "admin"].includes(req.me.role) ? next() : err(res, "forbidden", 403, "Solo staff");
 const admin = (req, res, next) => req.me.role === "admin" ? next() : err(res, "forbidden", 403, "Solo administración");
 const token = (u) => jwt.sign({ sub: u.id, role: u.role }, SECRET, { expiresIn: "7d" });
+/* Textos cortos de cada aviso, para la notificación del móvil */
+const TEXTO_PUSH = {
+  proposal: (c) => ["Nueva propuesta de intercambio", `Alguien quiere intercambiar contigo · ${c}`],
+  accepted: (c) => ["Han aceptado tu propuesta", `Firma el contrato para continuar · ${c}`],
+  sign: (c) => ["Te toca firmar", `El contrato espera tu firma · ${c}`],
+  proof_pre: (c) => ["Han subido su captura", `Sube la tuya para continuar · ${c}`],
+  in_progress: (c) => ["¡Intercambio en marcha!", `Ya podéis intercambiar en HOME · ${c}`],
+  confirmed: (c) => ["Han confirmado su parte", `Confirma tú para cerrar · ${c}`],
+  closed: (c) => ["Intercambio cerrado", `Valora a la otra persona · ${c}`],
+  disputed: (c) => ["Se abrió una disputa", `Tienes 72 h para responder · ${c}`],
+  cancelled: (c) => ["Intercambio cancelado", `Consulta los detalles · ${c}`],
+  sanction: () => ["Aviso de moderación", "Revisa tu perfil"],
+  message: (n) => [`${n} te escribió`, "Toca para responder"],
+};
+
 async function notify(userIds, tipo, code) {
+  // Notificación al móvil: llega aunque la app esté cerrada
+  try {
+    const t = TEXTO_PUSH[tipo];
+    if (t && pushActivo()) {
+      const [titulo, cuerpo] = t(code);
+      enviarPushVarios(userIds, { titulo, cuerpo, url: "/", tag: "trade-" + (code || tipo) }).catch(() => {});
+    }
+  } catch { /* nunca rompe la acción principal */ }
+
   if (!mailActivo()) return;
   try {
     const ids = [...new Set(userIds.filter(Boolean))];
@@ -94,6 +119,7 @@ app.get("/api/bootstrap", async (_req, res) => {
     google: googleActivo() ? process.env.GOOGLE_CLIENT_ID : null,
     facebook: facebookActivo() ? process.env.FACEBOOK_APP_ID : null,
     ia: iaActiva(),
+    vapid: clavePublica(),
   });
 });
 
@@ -867,6 +893,25 @@ app.post("/api/me/showcase", auth, needsEmail, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Notificaciones que llegan con la app cerrada ---------- */
+app.post("/api/push/subscribe", auth, async (req, res) => {
+  const s = req.body?.sub;
+  if (!s?.endpoint || !s?.keys?.p256dh || !s?.keys?.auth)
+    return err(res, "validation_error", 422, "Suscripción no válida");
+  await q(
+    `INSERT INTO push_subs (user_id, endpoint, p256dh, auth) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (endpoint) DO UPDATE SET user_id=$1, p256dh=$3, auth=$4`,
+    [req.me.id, s.endpoint, s.keys.p256dh, s.keys.auth]);
+  res.status(201).json({ ok: true });
+});
+
+app.post("/api/push/unsubscribe", auth, async (req, res) => {
+  const ep = String(req.body?.endpoint || "");
+  if (ep) await q(`DELETE FROM push_subs WHERE endpoint=$1 AND user_id=$2`, [ep, req.me.id]);
+  else await q(`DELETE FROM push_subs WHERE user_id=$1`, [req.me.id]);
+  res.json({ ok: true });
+});
+
 /* ---------- Asistencia con IA ----------
    Con límites diarios por persona: la IA cuesta dinero y no queremos
    que un solo usuario agote la cuota de todos. */
@@ -1424,6 +1469,11 @@ app.post("/api/trades/:id/message", auth, needsEmail, needsPerfil, async (req, r
   if (hasOffsite(texto) && !req.body?.confirmOffsite)
     return err(res, "offsite_warning", 409, "Llevar el trato fuera de TradeSafe elimina tu protección y es la táctica nº1 de los estafadores. Confirma si aun así quieres enviarlo.");
   await q(`INSERT INTO messages (trade_id, sender_id, body) VALUES ($1,$2,$3)`, [t.id, req.me.id, texto]);
+  if (pushActivo()) {
+    const otroLado = t.a_id === req.me.id ? t.b_id : t.a_id;
+    const [tit, cue] = TEXTO_PUSH.message(req.me.display_name);
+    enviarPush(otroLado, { titulo: tit, cuerpo: cue, url: "/", tag: "chat-" + t.code }).catch(() => {});
+  }
   if (hasOffsite(texto))
     await q(`INSERT INTO messages (trade_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
       [t.id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección. Es la táctica nº1 de los estafadores."]);
@@ -1611,6 +1661,10 @@ app.post("/api/dm/:id/message", auth, needsEmail, needsPerfil, noSilenciado, asy
 
   await q(`INSERT INTO dm_messages (thread_id, sender_id, body) VALUES ($1,$2,$3)`, [t.rows[0].id, req.me.id, texto]);
   await q(`UPDATE dm_threads SET last_at=now() WHERE id=$1`, [t.rows[0].id]);
+  if (pushActivo()) {
+    const [tit, cue] = TEXTO_PUSH.message(req.me.display_name);
+    enviarPush(otro, { titulo: tit, cuerpo: cue, url: "/", tag: "dm-" + t.rows[0].id }).catch(() => {});
+  }
   if (hasOffsite(texto))
     await q(`INSERT INTO dm_messages (thread_id, sender_id, kind, body) VALUES ($1,NULL,'oro',$2)`,
       [t.rows[0].id, "⚠ Llevar el trato fuera de TradeSafe elimina tu protección."]);

@@ -751,6 +751,74 @@ function Publicar({ refresh, done, cfgIA }) {
   );
 }
 
+/* Activar las notificaciones que llegan con la app cerrada */
+function AvisosMovil({ vapid }) {
+  const [estado, setEstado] = useState("comprobando");
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    if (!vapid || !("serviceWorker" in navigator) || !("PushManager" in window)) return setEstado("no");
+    if (Notification.permission === "denied") return setEstado("denegado");
+    navigator.serviceWorker.getRegistration()
+      .then((r) => r?.pushManager.getSubscription())
+      .then((s) => setEstado(s ? "activo" : "inactivo"))
+      .catch(() => setEstado("inactivo"));
+  }, [vapid]);
+
+  if (estado === "no" || estado === "comprobando") return null;
+
+  const base64ABytes = (b64) => {
+    const s = (b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(s);
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  };
+
+  const activar = async () => {
+    setOcupado(true);
+    try {
+      const permiso = await Notification.requestPermission();
+      if (permiso !== "granted") { setEstado(permiso === "denied" ? "denegado" : "inactivo"); setOcupado(false); return; }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64ABytes(vapid),
+      });
+      await api.suscribirPush(sub.toJSON());
+      setEstado("activo"); vibrar(15);
+    } catch { setEstado("inactivo"); }
+    setOcupado(false);
+  };
+
+  const desactivar = async () => {
+    setOcupado(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) { await api.desuscribirPush(sub.endpoint); await sub.unsubscribe(); }
+      setEstado("inactivo");
+    } catch { /* nada */ }
+    setOcupado(false);
+  };
+
+  return (
+    <div className="ficha mt-14">
+      <div className="eyebrow" style={{ marginBottom: 8 }}>{tx().notiTitulo2}</div>
+      <p className="txt-xs suave" style={{ marginBottom: 12 }}>{tx().notiIntro}</p>
+      {estado === "denegado" ? (
+        <Aviso tipo="oro">{tx().notiDenegadas}</Aviso>
+      ) : estado === "activo" ? (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="tag verde">{tx().notiActivas}</span>
+          <button className="btn mini secundario" disabled={ocupado} onClick={desactivar}>{tx().desactivarNoti}</button>
+        </div>
+      ) : (
+        <button className="btn mini" disabled={ocupado} onClick={activar}>{tx().activarNoti}</button>
+      )}
+    </div>
+  );
+}
+
 /* Vibración corta al confirmar algo. Silenciosa si el móvil no la admite. */
 function vibrar(patron = 12) {
   try { navigator.vibrate?.(patron); } catch { /* no admitido */ }
@@ -2688,7 +2756,7 @@ function MisTrades({ me, refresh, abrir, onAbierto, onAbrirDM }) {
 }
 
 /* ================= Perfil ================= */
-function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
+function Perfil({ me, refresh, onStaff, oscuro, setOscuro, vapid }) {
   const u = userById(me.id);
   const { run, busy } = useRun(refresh);
   const exportar = () => run(async () => {
@@ -2878,6 +2946,8 @@ function Perfil({ me, refresh, onStaff, oscuro, setOscuro }) {
           )}
         </div>
       </div>
+
+      <AvisosMovil vapid={vapid} />
 
       <div className="ficha mt-14">
         <div className="eyebrow" style={{ marginBottom: 10 }}>{tx().ajustes}</div>
@@ -3429,7 +3499,7 @@ export default function App() {
         const b = await api.bootstrap();
         if (!vivo) return;
         setHasUsers(b.hasUsers);
-        setCfg({ google: b.google, facebook: b.facebook, ia: b.ia });
+        setCfg({ google: b.google, facebook: b.facebook, ia: b.ia, vapid: b.vapid });
         // Las formas especiales (Flor Eterna, regionales, megas) se cargan aparte
         cargarFormas().then(() => vivo && force()).catch(() => {});
         if (api.getToken()) { try { await api.sync(); } catch { /* sesión caducada */ } }
@@ -3607,7 +3677,7 @@ export default function App() {
               abrir={abrirOferta} onAbierto={() => setAbrirOferta(null)} />
           </>
         ) : me.status === "suspended" ? (
-          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} vapid={cfg?.vapid} />
         ) : abrirDM ? (
           <ChatDirecto hilo={abrirDM} me={me} refresh={refresh}
             onVolver={() => setAbrirDM(null)} onFicha={(id) => { setAbrirDM(null); setVerFicha(id); }} />
@@ -3631,7 +3701,7 @@ export default function App() {
           <MisTrades me={me} refresh={refresh} abrir={abrirTrade} onAbierto={() => setAbrirTrade(null)}
             onAbrirDM={setAbrirDM} />
         ) : tab === "perfil" ? (
-          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} />
+          <Perfil me={me} refresh={refresh} onStaff={() => setTab("staff")} oscuro={oscuro} setOscuro={setOscuro} vapid={cfg?.vapid} />
         ) : (
           <Staff me={me} refresh={refresh} />
         )}

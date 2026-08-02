@@ -57,6 +57,9 @@ export async function destacarPokemon(id) { const r = await call(`/pokemon/${id}
 export async function publicarPokemon(id, wants) { const r = await call(`/pokemon/${id}/list`, { method: "POST", body: { wants } }); await sync(); return r.offerId; }
 export async function retirarPokemon(id) { await call(`/pokemon/${id}/unlist`, { method: "POST" }); await sync(); }
 
+export const suscribirPush = (sub) => call("/push/subscribe", { method: "POST", body: { sub } });
+export const desuscribirPush = (endpoint) => call("/push/unsubscribe", { method: "POST", body: { endpoint } });
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {
