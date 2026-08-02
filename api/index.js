@@ -535,7 +535,31 @@ async function retirarOfertasCerradas() {
                              AND o.status IN ('active','expired'))`);
 }
 
+/* Recordatorio a quien aún no participa, 24 h antes de que cierre un sorteo */
+async function recordarSorteos() {
+  if (!pushActivo()) return;
+  const cerca = await q(
+    `SELECT id, title FROM giveaways
+     WHERE drawn_at IS NULL AND reminded IS NOT TRUE
+       AND ends_at BETWEEN now() AND now() + interval '24 hours'`);
+  for (const g of cerca.rows) {
+    const faltan = await q(
+      `SELECT u.id FROM users u
+       WHERE u.status='active' AND u.verified = true
+         AND NOT EXISTS (SELECT 1 FROM giveaway_entries e WHERE e.giveaway_id=$1 AND e.user_id=u.id)`, [g.id]);
+    if (faltan.rowCount) {
+      enviarPushVarios(faltan.rows.map((u) => u.id), {
+        titulo: "Último día para participar",
+        cuerpo: `${g.title} cierra en menos de 24 horas.`,
+        url: "/", tag: "sorteo-fin-" + g.id,
+      }).catch(() => {});
+    }
+    await q(`UPDATE giveaways SET reminded = true WHERE id=$1`, [g.id]);
+  }
+}
+
 async function expireStale() {
+  await recordarSorteos().catch(() => {});
   await retirarOfertasCerradas();
   await q(`UPDATE trades SET state='cancelled', events=${EXPIRE_EVENT}
            WHERE state IN ('proposal','contract','pre_proof')
@@ -1244,7 +1268,27 @@ app.post("/api/giveaways", auth, staff, async (req, res) => {
     [req.me.id, titulo, String(req.body?.description || "").trim().slice(0, 500) || null,
      JSON.stringify(premios), Math.max(0, Number(req.body?.minTrades) || 0), String(dias)]);
   await audit(req.me.id, "giveaway.created", r.rows[0].id, `${premios.length} premios · ${dias} días`);
-  res.status(201).json({ id: r.rows[0].id });
+
+  // Se avisa a toda la comunidad: si no, solo se enteran los que entran ese día
+  const todos = await q(
+    `SELECT id FROM users WHERE status='active' AND verified = true AND id <> $1`, [req.me.id]);
+  const ids = todos.rows.map((u) => u.id);
+  if (pushActivo() && ids.length) {
+    enviarPushVarios(ids, {
+      titulo: "Nuevo sorteo en TradeSafe",
+      cuerpo: `${titulo} · ${premios.length} ${premios.length === 1 ? "premio" : "premios"}. Participa antes de que acabe.`,
+      url: "/", tag: "sorteo-" + r.rows[0].id,
+    }).catch(() => {});
+  }
+  // Y un anuncio dentro de la app, para quien no tenga notificaciones
+  await q(
+    `INSERT INTO announcements (title, body, level, created_by, expires_at)
+     VALUES ($1,$2,'info',$3, now() + ($4 || ' days')::interval)`,
+    ["Nuevo sorteo: " + titulo.slice(0, 60),
+     `${premios.length} ${premios.length === 1 ? "premio" : "premios"}. Participa desde Inicio → Comunidad antes del cierre.`,
+     req.me.id, String(dias)]);
+
+  res.status(201).json({ id: r.rows[0].id, avisados: ids.length });
 });
 
 app.post("/api/giveaways/:id/enter", auth, needsEmail, async (req, res) => {
