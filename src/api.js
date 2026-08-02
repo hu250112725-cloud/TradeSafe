@@ -60,6 +60,8 @@ export async function retirarPokemon(id) { await call(`/pokemon/${id}/unlist`, {
 export const suscribirPush = (sub) => call("/push/subscribe", { method: "POST", body: { sub } });
 export const desuscribirPush = (endpoint) => call("/push/unsubscribe", { method: "POST", body: { endpoint } });
 
+export async function salirSorteo(id) { await call(`/giveaways/${id}/enter`, { method: "DELETE" }); await sync(); }
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {

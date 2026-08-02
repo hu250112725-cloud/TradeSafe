@@ -1357,50 +1357,112 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
             <button className="btn mini secundario" style={{ marginBottom: 14 }} onClick={() => setCrear(true)}>+ {tx().crearSorteo}</button>
           ))}
 
-          {sorteos.length === 0 ? <Vacio icono="◆">{tx().sinSorteos}</Vacio> : sorteos.map((g) => (
-            <div key={g.id} className="ticket" style={{ marginBottom: 14 }}>
-              <div className="ticket-cuerpo">
-                <div className="tags">
-                  <span className="h2">{g.title}</span>
-                  {g.status === "drawn" && <span className="tag verde">{tx().ganadores}</span>}
-                  {g.status === "cancelled" && <span className="tag lacre">✕</span>}
-                </div>
-                {g.description && <p className="txt-s suave mt-6">{g.description}</p>}
-                <div className="eyebrow" style={{ margin: "12px 0 6px" }}>{tx().premios}</div>
-                {g.prizes.map((p, i) => (
-                  <div key={i} className="fila" style={{ padding: "3px 0" }}>
-                    <span className="txt-s">{["🥇","🥈","🥉","◆"][i] || "◆"} {p}</span>
-                    {g.winners?.[i] && <b className="txt-s" style={{ color: "var(--verde)" }}>{g.winners[i].name}</b>}
+          {sorteos.length === 0 ? <Vacio icono="◆">{tx().sinSorteos}</Vacio> : sorteos.map((g) => {
+            const u = userById(me?.id);
+            const cumpleTrades = (u?.trades ?? 0) >= (g.minTrades || 0);
+            const cumpleVerif = !!me?.verified;
+            const sinSanc = sanctionsOf(me?.id).length === 0;
+            const puede = cumpleTrades && cumpleVerif && sinSanc;
+            const abierto = g.status === "open";
+            const restante = abierto ? new Date(g.endsAt) - Date.now() : 0;
+            const horas = Math.floor(restante / 3600000);
+            const urge = abierto && horas < 24;
+            const cuenta = restante <= 0 ? tx().yaCerrado
+              : horas >= 48 ? tx().quedanDias(Math.floor(horas / 24))
+              : horas >= 1 ? tx().quedanHoras(horas)
+              : tx().quedanMin(Math.max(1, Math.floor(restante / 60000)));
+
+            return (
+              <div key={g.id} className={`ficha sorteo ${urge ? "urge" : ""}`} style={{ marginBottom: 14 }}>
+                <div className="sorteo-cab">
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="h2" style={{ lineHeight: 1.2 }}>{g.title}</div>
+                    <div className="txt-xs suave mt-6">
+                      {tx().organiza} <b>{userById(g.hostId)?.displayName ?? "—"}</b>
+                    </div>
                   </div>
-                ))}
-                <div className="txt-xs suave mt-10">
-                  {tx().organiza} {userById(g.hostId)?.displayName ?? "—"} · {tx().participantes(g.entries)}
-                  {g.minTrades > 0 && <> · {tx().requisitoTrades(g.minTrades)}</>}
+                  {abierto ? (
+                    <div className={`cuenta-atras ${urge ? "urge" : ""}`}>
+                      <span className="ca-lbl">{tx().terminaEn}</span>
+                      <span className="ca-val">{urge && horas < 6 ? tx().ultimasHoras : cuenta}</span>
+                    </div>
+                  ) : (
+                    <span className="tag verde">{tx().ganadores}</span>
+                  )}
                 </div>
-                {g.status === "drawn" && g.seed && (
-                  <p className="txt-xs suave mono mt-6">{tx().sorteoVerificable}: {g.seed}</p>
-                )}
-              </div>
-              <div className="ticket-talon">
-                {g.status === "open" ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span className="txt-xs">{tx().terminaEl} {fecha(g.endsAt)}</span>
-                    {g.hostId !== me?.id && (g.mine
-                      ? <span className="tag verde">{tx().yaParticipas}</span>
-                      : <button className="btn mini" disabled={busy} onClick={() => run(() => api.enterGiveaway(g.id))}>{tx().btnParticipar}</button>)}
-                    {esStaff && (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn mini" disabled={busy} onClick={() => run(() => api.drawGiveaway(g.id))}>{tx().btnSortear}</button>
-                        <button className="btn mini secundario" disabled={busy} onClick={() => run(() => api.cancelGiveaway(g.id))}>{tx().btnCancelarSorteo}</button>
+
+                {g.description && <p className="txt-s suave" style={{ margin: "10px 0 0", lineHeight: 1.45 }}>{g.description}</p>}
+
+                <div className="premios">
+                  {g.prizes.map((p, i) => (
+                    <div key={i} className="premio">
+                      <span className={`premio-n p${i + 1}`}>{i + 1}</span>
+                      <span className="premio-txt">{p}</span>
+                      {g.winners?.[i] && <b className="premio-ganador">{g.winners[i].name}</b>}
+                    </div>
+                  ))}
+                </div>
+
+                {abierto && (
+                  <>
+                    <div className="participantes-fila">
+                      <div className="avatares">
+                        {(g.participantes || []).slice(0, 5).map((id) => {
+                          const p = userById(id);
+                          return p?.avatarId
+                            ? <img key={id} className="av-mini" src={api.imageUrl(p.avatarId)} alt="" title={p.displayName} />
+                            : <span key={id} className="av-mini av-ini" title={p?.displayName}>{(p?.displayName ?? "?").slice(0, 1).toUpperCase()}</span>;
+                        })}
+                      </div>
+                      <span className="txt-xs suave">
+                        {g.entries === 0 ? tx().nadieAun : tx().participantes(g.entries)}
+                        {g.mine && g.entries > 0 && <> · {tx().tusOpciones(g.entries)}</>}
+                      </span>
+                    </div>
+
+                    {!puede && me && (
+                      <div className="requisitos">
+                        <span className="eyebrow">{tx().requisitosSorteo}</span>
+                        {!cumpleVerif && <div className="req no">○ {tx().requisitoVerif}</div>}
+                        {!cumpleTrades && <div className="req no">○ {tx().requisitoTrades(g.minTrades)}</div>}
+                        {!sinSanc && <div className="req no">○ {tx().requisitoSinSanc}</div>}
                       </div>
                     )}
-                  </div>
-                ) : (
-                  <span className="txt-xs">{g.drawnAt ? fecha(g.drawnAt) : ""}</span>
+                  </>
                 )}
+
+                {g.status === "drawn" && g.seed && (
+                  <div className="verificable">
+                    <span className="eyebrow">{tx().comprobable}</span>
+                    <p className="txt-xs suave">{tx().comprobableTxt}</p>
+                    <p className="txt-xs mono" style={{ wordBreak: "break-all", opacity: .7 }}>{g.seed}</p>
+                  </div>
+                )}
+
+                <div className="sorteo-pie">
+                  {abierto && g.hostId !== me?.id && (
+                    g.mine ? (
+                      <>
+                        <span className="tag verde">{tx().yaParticipas}</span>
+                        <button className="btn mini secundario" disabled={busy}
+                          onClick={() => run(() => api.salirSorteo(g.id))}>{tx().salirSorteo}</button>
+                      </>
+                    ) : (
+                      <button className="btn" style={{ flex: 1 }} disabled={busy || !puede}
+                        onClick={() => run(() => api.enterGiveaway(g.id))}>{tx().btnParticipar}</button>
+                    )
+                  )}
+                  {abierto && esStaff && (
+                    <>
+                      <button className="btn mini" disabled={busy} onClick={() => run(() => api.drawGiveaway(g.id))}>{tx().btnSortear}</button>
+                      <button className="btn mini secundario" disabled={busy} onClick={() => run(() => api.cancelGiveaway(g.id))}>{tx().btnCancelarSorteo}</button>
+                    </>
+                  )}
+                  {!abierto && <span className="txt-xs suave">{g.drawnAt ? fecha(g.drawnAt) : ""}</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </>
       )}
 

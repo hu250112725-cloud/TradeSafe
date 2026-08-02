@@ -712,6 +712,10 @@ app.get("/api/state", authAny, async (req, res) => {
      FROM giveaways g
      WHERE g.status='open' OR g.drawn_at > now() - interval '30 days'
      ORDER BY g.created_at DESC LIMIT 10`, [me.id]);
+  const gIds = givR.rows.map((g) => g.id);
+  const entriesR = gIds.length
+    ? await q(`SELECT giveaway_id, user_id FROM giveaway_entries WHERE giveaway_id = ANY($1)`, [gIds])
+    : { rows: [] };
   const boardR = await q(
     `SELECT b.id, b.user_id, b.body, b.created_at, u.display_name
      FROM board b JOIN users u ON u.id=b.user_id
@@ -770,6 +774,7 @@ app.get("/api/state", authAny, async (req, res) => {
     giveaways: givR.rows.map((g) => ({
       id: g.id, hostId: g.host_id, title: g.title, description: g.description,
       prizes: g.prizes, winners: g.winners, status: g.status, minTrades: g.min_trades,
+      participantes: (entriesR.rows.filter((e) => e.giveaway_id === g.id) || []).map((e) => e.user_id),
       endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
     })),
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
@@ -1289,6 +1294,15 @@ app.post("/api/giveaways", auth, staff, async (req, res) => {
      req.me.id, String(dias)]);
 
   res.status(201).json({ id: r.rows[0].id, avisados: ids.length });
+});
+
+// Salirse de un sorteo antes de que se celebre
+app.delete("/api/giveaways/:id/enter", auth, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  if (g.rows[0].status !== "open") return err(res, "state_invalid", 409, "El sorteo ya se celebró");
+  await q(`DELETE FROM giveaway_entries WHERE giveaway_id=$1 AND user_id=$2`, [req.params.id, req.me.id]);
+  res.json({ ok: true });
 });
 
 app.post("/api/giveaways/:id/enter", auth, needsEmail, async (req, res) => {
