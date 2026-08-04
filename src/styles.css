@@ -1481,3 +1481,11 @@ body.oscuro .btn-publicar { color: #08130c; }
 /* La conversación ocupa el alto disponible y desplaza bien hasta el final */
 .chat-mensajes { flex: 1; min-height: 0; overflow-y: auto; }
 .pantalla-chat { display: flex; flex-direction: column; }
+
+/* El motivo por el que no se envió un mensaje */
+.motivo-fallo {
+  width: 100%; font-size: 11px; line-height: 1.35; text-align: right;
+  color: var(--lacre); margin-top: 2px; padding: 0 4px;
+}
+body.oscuro .motivo-fallo { color: #ff9b7a; }
+.msg.pendiente { flex-wrap: wrap; justify-content: flex-end; }

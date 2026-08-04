@@ -1696,6 +1696,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
               <Icono tipo="cerrar" tam={13} />
             </button>
           )}
+          {p.motivo && <div className="motivo-fallo">{p.motivo}</div>}
         </div>
       ))}
 
@@ -2156,8 +2157,9 @@ function usePendientes(enviarReal) {
       setPendientes((p) => p.filter((x) => x.clave !== clave));
       return { ok: true };
     } catch (e) {
-      setPendientes((p) => p.map((x) => x.clave === clave ? { ...x, estado: "error" } : x));
-      return { ok: false, error: e };
+      const motivo = tErr(String(e?.message || ""));
+      setPendientes((p) => p.map((x) => x.clave === clave ? { ...x, estado: "error", motivo } : x));
+      return { ok: false, error: e, clave };
     }
   };
   // Vuelve a intentar un envío que falló, conservando su sitio en el chat
@@ -2436,6 +2438,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
                 <Icono tipo="cerrar" tam={13} />
               </button>
             )}
+            {p.motivo && <div className="motivo-fallo">{p.motivo}</div>}
           </div>
         ))}
 
