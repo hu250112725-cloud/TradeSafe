@@ -1387,3 +1387,70 @@ body.oscuro .av-mini { border-color: var(--papel-alto); color: #08130c; }
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linea);
 }
+
+/* ===== Inicio: cabecera compacta al estilo pestañas ===== */
+.barra-secciones {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.secciones {
+  display: flex; gap: 4px; flex: 1; min-width: 0;
+  background: var(--cielo); border-radius: 999px; padding: 3px;
+}
+.seccion {
+  flex: 1; border: none; background: none; cursor: pointer; font: inherit;
+  font-size: 12.5px; font-weight: 700; color: var(--tinta-suave);
+  padding: 8px 6px; border-radius: 999px; white-space: nowrap;
+  transition: background var(--t-rapido) var(--ease-suave), color var(--t-rapido) var(--ease-suave);
+}
+.seccion.activa { background: var(--papel-alto); color: var(--tinta); box-shadow: 0 1px 3px rgba(28,25,23,.1); }
+body.oscuro .seccion.activa { background: #2c2926; color: var(--tinta); box-shadow: none; }
+.seccion:active { transform: scale(.96); }
+
+.btn-publicar {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; cursor: pointer;
+  border: none; background: var(--verde); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(10,107,60,.28);
+  transition: transform var(--t-rapido) var(--ease-suave);
+}
+.btn-publicar:active { transform: scale(.92); }
+body.oscuro .btn-publicar { color: #08130c; }
+
+/* Buscador y filtros, más bajos */
+.buscador { padding: 10px 16px; font-size: 13.5px; }
+.franja-confianza { padding: 9px 13px; font-size: 12px; margin-bottom: 10px; }
+
+/* El anuncio del staff, más discreto en el listado */
+.anuncio { padding: 10px 13px; }
+.anuncio-cab b { font-size: 13px; }
+.anuncio .txt-s { font-size: 12.5px; }
+
+/* Anuncios plegados: una línea hasta que se tocan */
+.anuncio { padding: 0; overflow: hidden; }
+.anuncio-cab {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 10px 13px; border: none; background: none; cursor: pointer;
+  font: inherit; text-align: left; color: inherit;
+}
+.anuncio-cab b { font-size: 13px; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anuncio-flecha { opacity: .5; }
+.anuncio.info .anuncio-cab > .ic:first-child { color: var(--verde); }
+.anuncio.warning .anuncio-cab > .ic:first-child { color: var(--oro); }
+.anuncio.critical .anuncio-cab > .ic:first-child { color: var(--lacre); }
+.anuncio-cuerpo { padding: 0 13px 12px; }
+.anuncio-cuerpo .txt-s { margin: 0 0 10px; line-height: 1.45; }
+
+/* Buscador y filtros en una fila más baja, y menos aire entre bloques */
+.masthead { padding: 8px 0; }
+.content { padding-top: 4px; }
+.barra-secciones { margin-bottom: 10px; }
+.fila-busqueda { margin-bottom: 10px; }
+.franja-confianza { margin-bottom: 8px; padding: 8px 12px; }
+.cols-mercado { padding-bottom: 6px; }
+.anuncio { margin-bottom: 8px; }
+
+/* Guía de los primeros pasos, compacta */
+.guia-inicio { padding: 11px 13px; border-color: rgba(10,107,60,.3); }
+.guia-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.guia-inicio ol { color: var(--tinta-suave); }

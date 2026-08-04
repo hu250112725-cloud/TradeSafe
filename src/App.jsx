@@ -478,6 +478,28 @@ function PideCuenta({ onCrear, onCerrar }) {
   );
 }
 
+/* Un anuncio: se muestra plegado en una línea y se abre al tocarlo */
+function AnuncioFila({ a, onOcultar }) {
+  const [abierto, setAbierto] = useState(a.level === "critical");
+  return (
+    <div className={`anuncio ${a.level} ${abierto ? "abierto" : ""}`}>
+      <button className="anuncio-cab" onClick={() => setAbierto(!abierto)}>
+        <Icono tipo={a.level === "critical" ? "aviso" : a.level === "warning" ? "campana" : "regalo"} tam={15} />
+        <b>{a.title}</b>
+        <Icono tipo={abierto ? "arriba" : "abajo"} tam={14} className="anuncio-flecha" />
+      </button>
+      {abierto && (
+        <div className="anuncio-cuerpo">
+          <p className="txt-s">{a.body}</p>
+          {a.level !== "critical" && (
+            <button className="btn mini secundario" onClick={onOcultar}>{tx().entendidoAnuncio}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Anuncios del staff: lo primero que se ve al entrar.
    Los urgentes no se pueden ocultar; el resto se recuerda por dispositivo. */
 function Anuncios() {
@@ -527,15 +549,7 @@ function Anuncios() {
   return (
     <div style={{ marginBottom: 14 }}>
       {lista.map((a) => (
-        <div key={a.id} className={`anuncio ${a.level}`}>
-          <div className="anuncio-cab">
-            <b>{a.title}</b>
-            {a.level !== "critical" && (
-              <button className="anuncio-x" onClick={() => ocultar(a.id)} aria-label={tx().entendidoAnuncio}><Icono tipo="cerrar" tam={15} /></button>
-            )}
-          </div>
-          <p className="txt-s">{a.body}</p>
-        </div>
+        <AnuncioFila key={a.id} a={a} onOcultar={() => ocultar(a.id)} />
       ))}
     </div>
   );
@@ -964,6 +978,9 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
   const { run, busy, err } = useRun(refresh);
   const [orden, setOrden] = useState("reciente");
   const [tope, setTope] = useState(20);
+  const [guiaVista, setGuiaVista] = useState(() => {
+    try { return localStorage.getItem("ts_guia") === "1"; } catch { return false; }
+  });
   const [verFiltros, setVerFiltros] = useState(false);
   const [soloVerif, setSoloVerif] = useState(false);
   const [soloPrueba, setSoloPrueba] = useState(false);
@@ -1130,21 +1147,19 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h1 className="h1">{vista === "publicar" ? tx().publicarOferta : vista === "deseos" ? tx().deseosTitulo
-              : vista === "comunidad" ? tx().tabComunidad : tx().mercado}</h1>
-        <button className={`btn mini ${vista === "publicar" ? "secundario" : ""}`}
+      {/* Una sola fila: secciones a la izquierda, publicar a la derecha */}
+      <div className="barra-secciones">
+        <div className="secciones">
+          {[["ofertas", tx().verOfertas], ["deseos", tx().tabDeseos], ["comunidad", tx().tabComunidad]].map(([id, l]) => (
+            <button key={id} className={`seccion ${vista === id ? "activa" : ""}`}
+              onClick={() => { if (id !== "ofertas" && !me) return onPideCuenta(); setVista(id); }}>
+              {l}{id === "deseos" && (api.snap.matches?.length || 0) > 0 ? " ●" : ""}
+            </button>
+          ))}
+        </div>
+        <button className="btn-publicar" aria-label={tx().nuevaOferta}
           onClick={() => { if (!me) return onPideCuenta(); setVista(vista === "publicar" ? "ofertas" : "publicar"); }}>
-          {vista === "publicar" ? tx().btnCancelar : tx().nuevaOferta}
-        </button>
-      </div>
-      <div className="tags" style={{ marginBottom: 14 }}>
-        <button className={`btn mini ${vista === "ofertas" ? "" : "secundario"}`} onClick={() => setVista("ofertas")}>{tx().verOfertas}</button>
-        <button className={`btn mini ${vista === "deseos" ? "" : "secundario"}`} onClick={() => { if (!me) return onPideCuenta(); setVista("deseos"); }}>
-          {tx().tabDeseos}{(api.snap.matches?.length || 0) > 0 ? " ●" : ""}
-        </button>
-        <button className={`btn mini ${vista === "comunidad" ? "" : "secundario"}`} onClick={() => { if (!me) return onPideCuenta(); setVista("comunidad"); }}>
-          {tx().tabComunidad}
+          <Icono tipo={vista === "publicar" ? "cerrar" : "mas"} tam={19} grosor={2.1} />
         </button>
       </div>
 
@@ -1157,11 +1172,18 @@ function Mercado({ me, refresh, onOffenders, onFicha, abrir, onAbierto, esStaff,
         <Comunidad me={me} refresh={refresh} esStaff={esStaff} onFicha={onFicha} onOffenders={onOffenders} />
       )}
       {vista === "ofertas" && (<>
-      {todas.length <= 3 && !busca && (
-        <div className="ficha" style={{ marginBottom: 14, borderColor: "var(--verde)" }}>
-          <div className="h2" style={{ marginBottom: 8 }}>{tx().bienvenidaTitulo}</div>
-          <ol style={{ paddingLeft: 20, margin: 0 }}>
-            {tx().bienvenidaPasos.map((p, i) => <li key={i} className="txt-s" style={{ marginBottom: 6 }}>{p}</li>)}
+      {/* La guía inicial: solo mientras el mercado está casi vacío y hasta que se descarte */}
+      {(api.snap.offers || []).filter((o) => o.status === "active").length <= 3 && !busca && !guiaVista && (
+        <div className="ficha guia-inicio" style={{ marginBottom: 12 }}>
+          <div className="guia-cab">
+            <b className="txt-s">{tx().bienvenidaTitulo}</b>
+            <button className="enlace-volver" aria-label="✕" onClick={() => {
+              setGuiaVista(true);
+              try { localStorage.setItem("ts_guia", "1"); } catch { /* nada */ }
+            }}><Icono tipo="cerrar" tam={15} /></button>
+          </div>
+          <ol style={{ paddingLeft: 18, margin: "6px 0 0" }}>
+            {tx().bienvenidaPasos.map((p, i) => <li key={i} className="txt-xs" style={{ marginBottom: 4 }}>{p}</li>)}
           </ol>
         </div>
       )}
