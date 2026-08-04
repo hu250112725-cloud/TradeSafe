@@ -1598,7 +1598,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   }, []);
   if (!t) return null;
 
-  const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
+  const { pendientes, enviar: enviarPend, quitar, limpiar, reintentar } = usePendientes(
     (texto, conf) => api.enviarDM(t.id, texto, conf));
   useEffect(() => { limpiar(t?.messages || []); }, [t?.messages?.length]);
 
@@ -1611,7 +1611,7 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
     const r = await enviarPend(texto);
     if (r.ok) return refresh();
     const m = String(r.error?.message || "");
-    if (m.includes("táctica") || m.includes("tactic")) { setOffsite(texto); quitar(); }
+    if (m.includes("táctica") || m.includes("tactic")) { setOffsite(texto); quitar(r.clave); }
   };
 
   return (
@@ -1686,10 +1686,16 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
 
       {pendientes.map((p) => (
         <div key={p.clave} className={`msg mia pendiente ${p.estado === "error" ? "fallo" : ""}`}>
-          <div className="burbuja mia">
+          <button className="burbuja mia" disabled={p.estado !== "error"}
+            onClick={() => p.estado === "error" && reintentar(p.clave)}>
             {p.text}
             <span className="hora-msg">{p.estado === "error" ? tx().noEnviado : tx().enviando}</span>
-          </div>
+          </button>
+          {p.estado === "error" && (
+            <button className="descartar-msg" onClick={() => quitar(p.clave)} aria-label={tx().descartar}>
+              <Icono tipo="cerrar" tam={13} />
+            </button>
+          )}
         </div>
       ))}
 
@@ -2140,9 +2146,11 @@ function Infractores({ onBack }) {
    aparecen al instante en gris y se marcan si fallan. */
 function usePendientes(enviarReal) {
   const [pendientes, setPendientes] = useState([]);
-  const enviar = async (texto, extra) => {
-    const clave = Math.random().toString(36).slice(2);
-    setPendientes((p) => [...p, { clave, text: texto, at: new Date().toISOString(), estado: "enviando" }]);
+  const enviar = async (texto, extra, clavePrevia) => {
+    const clave = clavePrevia || Math.random().toString(36).slice(2);
+    setPendientes((p) => clavePrevia
+      ? p.map((x) => x.clave === clave ? { ...x, estado: "enviando" } : x)
+      : [...p, { clave, text: texto, at: new Date().toISOString(), estado: "enviando" }]);
     try {
       await enviarReal(texto, extra);
       setPendientes((p) => p.filter((x) => x.clave !== clave));
@@ -2152,11 +2160,16 @@ function usePendientes(enviarReal) {
       return { ok: false, error: e };
     }
   };
+  // Vuelve a intentar un envío que falló, conservando su sitio en el chat
+  const reintentar = (clave) => {
+    const m = pendientes.find((x) => x.clave === clave);
+    if (m) enviar(m.text, undefined, clave);
+  };
   const quitar = (clave) => setPendientes((p) => p.filter((x) => x.clave !== clave));
   // Si el mensaje ya llegó por el estado, deja de estar pendiente
   const limpiar = (mensajes) => setPendientes((p) =>
     p.filter((x) => x.estado === "error" || !mensajes.some((m) => m.text === x.text && !m.system)));
-  return { pendientes, enviar, quitar, limpiar };
+  return { pendientes, enviar, quitar, limpiar, reintentar };
 }
 
 /* Barra de acción: el siguiente paso del intercambio, dentro del chat */
@@ -2315,7 +2328,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   }, [t.messages?.length, t.id]);
   const act = (action, value) => { vibrar(12); return run(() => api.tradeAction(t.id, action, value)); };
   const act2 = (action, value, image) => { vibrar(12); return run(() => api.tradeAction(t.id, action, value, image)); };
-  const { pendientes, enviar: enviarPend, quitar, limpiar } = usePendientes(
+  const { pendientes, enviar: enviarPend, quitar, limpiar, reintentar } = usePendientes(
     (texto, conf) => api.sendMessage(t.id, texto, conf));
   useEffect(() => { limpiar(t.messages || []); }, [t.messages?.length]);
 
@@ -2328,7 +2341,7 @@ function TradeView({ trade: id, me, refresh, onBack }) {
     const r = await enviarPend(texto);
     if (r.ok) return refresh();
     const m = String(r.error?.message || "");
-    if (m.includes("táctica") || m.includes("tactic")) { setOffsitePend(texto); quitar(); }
+    if (m.includes("táctica") || m.includes("tactic")) { setOffsitePend(texto); quitar(r.clave); }
   };
 
   // Vista principal: chat a pantalla completa con el paso actual integrado
@@ -2413,10 +2426,16 @@ function TradeView({ trade: id, me, refresh, onBack }) {
 
         {pendientes.map((p) => (
           <div key={p.clave} className={`msg mia pendiente ${p.estado === "error" ? "fallo" : ""}`}>
-            <div className="burbuja mia">
+            <button className="burbuja mia" disabled={p.estado !== "error"}
+              onClick={() => p.estado === "error" && reintentar(p.clave)}>
               {p.text}
               <span className="hora-msg">{p.estado === "error" ? tx().noEnviado : tx().enviando}</span>
-            </div>
+            </button>
+            {p.estado === "error" && (
+              <button className="descartar-msg" onClick={() => quitar(p.clave)} aria-label={tx().descartar}>
+                <Icono tipo="cerrar" tam={13} />
+              </button>
+            )}
           </div>
         ))}
 
