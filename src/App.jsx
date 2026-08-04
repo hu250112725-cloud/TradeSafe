@@ -1503,9 +1503,16 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                   {!abierto && <span className="txt-xs suave">{g.drawnAt ? fecha(g.drawnAt) : ""}</span>}
                   {!abierto && esStaff && g.status === "drawn" && (
                     ampliando === g.id ? null : (
-                      <button className="btn mini secundario" onClick={() => { setAmpliando(g.id); setPremiosNuevos(""); }}>
-                        {tx().ampliarSorteo}
-                      </button>
+                      <>
+                        <button className="btn mini secundario" onClick={() => { setAmpliando(g.id); setPremiosNuevos(""); }}>
+                          {tx().ampliarSorteo}
+                        </button>
+                        {new Set((g.winners || []).map((w) => w.userId)).size < (g.winners || []).length && (
+                          <button className="btn mini peligro" disabled={busy}
+                            title={tx().recalcularTxt}
+                            onClick={() => run(() => api.recalcularSorteo(g.id))}>{tx().recalcular}</button>
+                        )}
+                      </>
                     )
                   )}
                 </div>

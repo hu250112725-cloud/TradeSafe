@@ -1449,12 +1449,16 @@ app.post("/api/giveaways/:id/ampliar", auth, staff, async (req, res) => {
     .map((p) => ({ ...p, h: crypto.createHash("sha256").update(gv.seed + ":" + p.user_id).digest("hex") }))
     .sort((a, b) => a.h.localeCompare(b.h));
 
-  const yaGanaron = (gv.winners || []).length;
-  const premios = [...gv.prizes, ...nuevos];
-  const disponibles = orden.slice(yaGanaron, premios.length);
+  /* Se descarta a quien YA ganó, comparando por su identificador.
+     No basta con saltar las primeras posiciones: si alguien entró o salió
+     del sorteo después de celebrarse, el orden cambia y alguien podría
+     repetir premio. */
+  const yaGanaron = new Set((gv.winners || []).map((w) => w.userId));
+  const disponibles = orden.filter((p) => !yaGanaron.has(p.user_id)).slice(0, nuevos.length);
   if (!disponibles.length)
     return err(res, "state_invalid", 409, "No quedan participantes para más premios");
 
+  const premios = [...gv.prizes, ...nuevos.slice(0, disponibles.length)];
   const extra = disponibles.map((p, i) => ({
     userId: p.user_id, name: p.display_name, prize: nuevos[i], hash: p.h.slice(0, 12),
   }));
@@ -1475,6 +1479,33 @@ app.post("/api/giveaways/:id/ampliar", auth, staff, async (req, res) => {
     }).catch(() => {});
   }
   res.json({ winners: ganadores, nuevos: extra });
+});
+
+/* Recalcular los ganadores de un sorteo ya celebrado, con su misma semilla.
+   Sirve para reparar un reparto con premios repetidos: el resultado sigue
+   siendo el que dicta la semilla, así que nadie sale beneficiado a dedo. */
+app.post("/api/giveaways/:id/recalcular", auth, staff, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  const gv = g.rows[0];
+  if (gv.status !== "drawn" || !gv.seed)
+    return err(res, "state_invalid", 409, "Solo se puede recalcular un sorteo ya celebrado");
+
+  const ent = await q(
+    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+     WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
+  const orden = ent.rows
+    .map((p) => ({ ...p, h: crypto.createHash("sha256").update(gv.seed + ":" + p.user_id).digest("hex") }))
+    .sort((a, b) => a.h.localeCompare(b.h));
+
+  // Un premio por persona, en el orden que fijó la semilla
+  const ganadores = orden.slice(0, gv.prizes.length).map((p, i) => ({
+    userId: p.user_id, name: p.display_name, prize: gv.prizes[i], hash: p.h.slice(0, 12),
+  }));
+  const antes = (gv.winners || []).map((w) => w.name).join(", ");
+  await q(`UPDATE giveaways SET winners=$2 WHERE id=$1`, [gv.id, JSON.stringify(ganadores)]);
+  await audit(req.me.id, "giveaway.recalculado", gv.id, `antes: ${antes} · ahora: ${ganadores.map((w) => w.name).join(", ")}`);
+  res.json({ winners: ganadores });
 });
 
 app.post("/api/giveaways/:id/cancel", auth, staff, async (req, res) => {
