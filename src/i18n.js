@@ -913,6 +913,7 @@ const errEN = {
   "Solo se pueden añadir premios a un sorteo ya celebrado": "Prizes can only be added to a drawn giveaway",
   "Escribe al menos un premio nuevo": "Write at least one new prize",
   "No quedan participantes para más premios": "No entrants left for more prizes",
+  "Ya participas en este sorteo con otra de tus cuentas": "You already entered this giveaway with another of your accounts",
   "Solo se puede recalcular un sorteo ya celebrado": "Only a drawn giveaway can be recalculated",
   "Pokémon no encontrado": "Pokémon not found",
   "Retíralo del mercado antes de borrarlo": "Remove it from the market before deleting",

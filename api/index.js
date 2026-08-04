@@ -1379,6 +1379,31 @@ app.delete("/api/giveaways/:id/enter", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* Cuentas que probablemente son de la misma persona: misma clave de amigo
+   o mismo dispositivo de registro. */
+/* Deja una sola cuenta por persona real, conservando la que entró antes.
+   Solo se agrupa por clave de amigo: es lo único que identifica de verdad a
+   un jugador. La huella del dispositivo NO sirve aquí, porque mucha gente
+   comparte salida a internet (móvil, wifi de casa) y bloquearíamos a
+   personas distintas. */
+function unaPorPersona(filas) {
+  const vistos = new Set();
+  return filas.filter((p) => {
+    const clave = p.friend_code || p.user_id;
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  });
+}
+
+async function cuentasHermanas(userId) {
+  const r = await q(
+    `SELECT x.id FROM users u JOIN users x ON x.id <> u.id AND x.status <> 'deleted'
+       AND u.friend_code IS NOT NULL AND x.friend_code = u.friend_code
+     WHERE u.id = $1`, [userId]);
+  return r.rows.map((x) => x.id);
+}
+
 app.post("/api/giveaways/:id/enter", auth, needsEmail, async (req, res) => {
   const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
   if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
@@ -1392,6 +1417,15 @@ app.post("/api/giveaways/:id/enter", auth, needsEmail, async (req, res) => {
     return err(res, "forbidden", 403, `Necesitas ${gv.min_trades} intercambios cerrados para participar`);
   const sanc = await q(`SELECT 1 FROM sanctions WHERE user_id=$1 AND (expires IS NULL OR expires>now())`, [req.me.id]);
   if (sanc.rowCount) return err(res, "forbidden", 403, "Las cuentas con sanción activa no pueden participar");
+  // Una sola participación por persona, aunque tenga varias cuentas
+  const hermanas = await cuentasHermanas(req.me.id);
+  if (hermanas.length) {
+    const ya = await q(`SELECT 1 FROM giveaway_entries WHERE giveaway_id=$1 AND user_id = ANY($2)`, [gv.id, hermanas]);
+    if (ya.rowCount) {
+      await audit(req.me.id, "giveaway.multicuenta", gv.id, "Intento de participar con otra cuenta");
+      return err(res, "conflict", 409, "Ya participas en este sorteo con otra de tus cuentas");
+    }
+  }
   try {
     await q(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES ($1,$2)`, [gv.id, req.me.id]);
   } catch (e) {
@@ -1407,12 +1441,16 @@ app.post("/api/giveaways/:id/draw", auth, staff, async (req, res) => {
   const gv = g.rows[0];
   if (gv.status !== "open") return err(res, "state_invalid", 409, "Este sorteo ya fue sorteado");
   const ent = await q(
-    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+    `SELECT e.user_id, u.display_name, u.friend_code, u.signup_fp
+     FROM giveaway_entries e JOIN users u ON u.id=e.user_id
      WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
   if (!ent.rowCount) return err(res, "state_invalid", 409, "Nadie participó en este sorteo");
+  /* Si se colaron varias cuentas de la misma persona (registradas antes de
+     esta comprobación), solo cuenta la primera: una persona, una opción. */
+  const filtrados = unaPorPersona(ent.rows);
   // Sorteo verificable: la semilla se publica y cualquiera puede recalcular el resultado
   const semilla = crypto.randomBytes(8).toString("hex");
-  const orden = ent.rows
+  const orden = filtrados
     .map((p) => ({ ...p, h: crypto.createHash("sha256").update(semilla + ":" + p.user_id).digest("hex") }))
     .sort((a, b) => a.h.localeCompare(b.h));
   const ganadores = orden.slice(0, gv.prizes.length).map((p, i) => ({
@@ -1442,10 +1480,11 @@ app.post("/api/giveaways/:id/ampliar", auth, staff, async (req, res) => {
   for (const p of nuevos) if (hasMoney(p)) return err(res, "money_offer_blocked", 422, "Los premios no pueden ser dinero real");
 
   const ent = await q(
-    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+    `SELECT e.user_id, u.display_name, u.friend_code, u.signup_fp
+     FROM giveaway_entries e JOIN users u ON u.id=e.user_id
      WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
   // Mismo cálculo que en el sorteo original, con la misma semilla
-  const orden = ent.rows
+  const orden = unaPorPersona(ent.rows)
     .map((p) => ({ ...p, h: crypto.createHash("sha256").update(gv.seed + ":" + p.user_id).digest("hex") }))
     .sort((a, b) => a.h.localeCompare(b.h));
 
@@ -1492,9 +1531,10 @@ app.post("/api/giveaways/:id/recalcular", auth, staff, async (req, res) => {
     return err(res, "state_invalid", 409, "Solo se puede recalcular un sorteo ya celebrado");
 
   const ent = await q(
-    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+    `SELECT e.user_id, u.display_name, u.friend_code, u.signup_fp
+     FROM giveaway_entries e JOIN users u ON u.id=e.user_id
      WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
-  const orden = ent.rows
+  const orden = unaPorPersona(ent.rows)
     .map((p) => ({ ...p, h: crypto.createHash("sha256").update(gv.seed + ":" + p.user_id).digest("hex") }))
     .sort((a, b) => a.h.localeCompare(b.h));
 
