@@ -1218,6 +1218,80 @@ app.get("/api/public", async (_req, res) => {
   });
 });
 
+/* ---------- Salud de la comunidad (staff) ---------- */
+app.get("/api/staff/pulso", auth, staff, async (_req, res) => {
+  const [gente, trades, mercado, riesgo, semanas] = await Promise.all([
+    q(`SELECT
+        count(*) FILTER (WHERE status='active')::int AS activos,
+        count(*) FILTER (WHERE status='active' AND verified)::int AS verificados,
+        count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS nuevos7,
+        count(*) FILTER (WHERE status='active' AND last_seen > now() - interval '24 hours')::int AS hoy,
+        count(*) FILTER (WHERE status='active' AND last_seen > now() - interval '7 days')::int AS semana,
+        count(*) FILTER (WHERE status='active' AND (last_seen IS NULL OR last_seen < now() - interval '14 days'))::int AS perdidos
+       FROM users`),
+    q(`SELECT
+        count(*) FILTER (WHERE state='closed')::int AS cerrados,
+        count(*) FILTER (WHERE state NOT IN ('closed','cancelled'))::int AS abiertos,
+        count(*) FILTER (WHERE state='cancelled')::int AS cancelados,
+        count(*) FILTER (WHERE state='closed' AND (events->-1->>'at')::timestamptz > now() - interval '7 days')::int AS cerrados7,
+        round(avg(EXTRACT(epoch FROM ((events->-1->>'at')::timestamptz - created_at)) / 3600) FILTER (WHERE state='closed'))::int AS horas_medias
+       FROM trades`),
+    q(`SELECT
+        count(*) FILTER (WHERE status='active')::int AS activas,
+        count(*) FILTER (WHERE status='expired')::int AS archivadas,
+        count(*) FILTER (WHERE status='traded')::int AS intercambiadas
+       FROM offers`),
+    q(`SELECT
+        (SELECT count(*)::int FROM disputes WHERE status='open') AS disputas,
+        (SELECT count(*)::int FROM sanctions WHERE expires IS NULL OR expires > now()) AS sanciones,
+        (SELECT count(*)::int FROM audit WHERE action='dm.money_blocked' AND created_at > now() - interval '30 days') AS dinero,
+        (SELECT count(*)::int FROM dm_reports WHERE status='open') AS chats`),
+    // Actividad de las últimas 6 semanas, para ver la tendencia
+    q(`SELECT to_char(semana, 'DD/MM') AS etiqueta,
+              coalesce(n, 0)::int AS cerrados
+       FROM generate_series(date_trunc('week', now()) - interval '5 weeks',
+                            date_trunc('week', now()), interval '1 week') AS semana
+       LEFT JOIN (SELECT date_trunc('week', (events->-1->>'at')::timestamptz) AS s, count(*) AS n
+                  FROM trades WHERE state='closed' GROUP BY 1) x ON x.s = semana
+       ORDER BY semana`),
+  ]);
+  res.json({
+    gente: gente.rows[0], trades: trades.rows[0], mercado: mercado.rows[0],
+    riesgo: riesgo.rows[0], semanas: semanas.rows,
+  });
+});
+
+/* ---------- Ranking del mes ----------
+   Solo cuentan los intercambios cerrados sin disputa: premia terminar bien,
+   no acumular por acumular. */
+app.get("/api/ranking", async (_req, res) => {
+  const r = await q(`
+    SELECT u.id, u.display_name, u.avatar_id, u.verified,
+      count(*)::int AS cerrados,
+      round(avg(CASE WHEN t.a_id=u.id THEN (t.flags->>'ratingForA')::numeric
+                     ELSE (t.flags->>'ratingForB')::numeric END), 1) AS nota
+    FROM users u
+    JOIN trades t ON (t.a_id = u.id OR t.b_id = u.id)
+    WHERE u.status='active' AND t.state='closed'
+      AND date_trunc('month', (t.events->-1->>'at')::timestamptz) = date_trunc('month', now())
+      AND NOT EXISTS (SELECT 1 FROM disputes d WHERE d.trade_id = t.id)
+    GROUP BY u.id, u.display_name, u.avatar_id, u.verified
+    ORDER BY cerrados DESC, nota DESC NULLS LAST
+    LIMIT 10`);
+  const mes = await q(`SELECT
+    (SELECT count(*)::int FROM trades WHERE state='closed'
+      AND date_trunc('month', (events->-1->>'at')::timestamptz) = date_trunc('month', now())) AS cerrados,
+    (SELECT count(*)::int FROM users WHERE status='active'
+      AND date_trunc('month', created_at) = date_trunc('month', now())) AS nuevos`);
+  res.json({
+    top: r.rows.map((u, i) => ({
+      puesto: i + 1, id: u.id, displayName: u.display_name, avatarId: u.avatar_id,
+      verified: u.verified, cerrados: u.cerrados, nota: u.nota ? Number(u.nota) : null,
+    })),
+    mes: mes.rows[0],
+  });
+});
+
 /* ---------- Estadísticas públicas ---------- */
 app.get("/api/stats", async (_req, res) => {
   const r = await q(`SELECT
