@@ -1344,8 +1344,11 @@ function Ayuda({ onCerrar }) {
 
 /* ================= Comunidad: sorteos y tablón ================= */
 function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
+  const esAdmin = me?.role === "admin";
   const [msg, setMsg] = useState("");
   const [ampliando, setAmpliando] = useState(null);
+  const [resorteando, setResorteando] = useState(null);
+  const [motivoRes, setMotivoRes] = useState("");
   const [premiosNuevos, setPremiosNuevos] = useState("");
   const [crear, setCrear] = useState(false);
   const [f, setF] = useState({ days: 7, minTrades: 0 });
@@ -1455,6 +1458,39 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                   </>
                 )}
 
+                {resorteando === g.id && (
+                  <div className="ficha mt-14" style={{ borderColor: "var(--oro)" }}>
+                    <Aviso tipo="oro">{tx().resorteoAviso}</Aviso>
+                    <div className="mt-10">
+                      <Campo label={tx().lblMotivoResorteo}>
+                        <textarea value={motivoRes} onChange={(e) => setMotivoRes(e.target.value)} rows={2} />
+                      </Campo>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn mini peligro" disabled={busy || motivoRes.trim().length < 15}
+                        onClick={() => run(async () => { await api.resortear(g.id, motivoRes); setResorteando(null); setMotivoRes(""); })}>
+                        {tx().resortear}
+                      </button>
+                      <button className="btn mini secundario" onClick={() => setResorteando(null)}>{tx().btnCancelar}</button>
+                    </div>
+                  </div>
+                )}
+
+                {(g.redraws || []).length > 0 && (
+                  <div className="historial-sorteo">
+                    <span className="eyebrow">{tx().repetido(g.redraws.length)}</span>
+                    {g.redraws.map((h, i) => (
+                      <div key={i} className="repeticion">
+                        <div className="txt-xs"><b>{tx().motivoRepeticion}:</b> {h.reason}</div>
+                        <div className="txt-xs suave">
+                          {tx().resultadoAnterior}: {h.winners.map((w) => w.name).join(", ")}
+                        </div>
+                        <div className="txt-xs mono" style={{ opacity: .55, wordBreak: "break-all" }}>{h.seed}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {ampliando === g.id && (
                   <div className="ficha mt-14" style={{ borderColor: "var(--verde)" }}>
                     <Campo label={tx().lblPremiosNuevos}>
@@ -1507,6 +1543,11 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                         <button className="btn mini secundario" onClick={() => { setAmpliando(g.id); setPremiosNuevos(""); }}>
                           {tx().ampliarSorteo}
                         </button>
+                        {esAdmin && (
+                          <button className="btn mini secundario" onClick={() => { setResorteando(g.id); setMotivoRes(""); }}>
+                            {tx().resortear}
+                          </button>
+                        )}
                         {new Set((g.winners || []).map((w) => w.userId)).size < (g.winners || []).length && (
                           <button className="btn mini peligro" disabled={busy}
                             title={tx().recalcularTxt}
@@ -1531,6 +1572,8 @@ function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   const t = api.snap.dm.find((x) => x.id === hilo);
   const [msg, setMsg] = useState("");
   const [ampliando, setAmpliando] = useState(null);
+  const [resorteando, setResorteando] = useState(null);
+  const [motivoRes, setMotivoRes] = useState("");
   const [premiosNuevos, setPremiosNuevos] = useState("");
   const [offsite, setOffsite] = useState(null);
   const [reportando, setReportando] = useState(false);
@@ -2230,6 +2273,8 @@ function TradeView({ trade: id, me, refresh, onBack }) {
   const t = api.snap.trades.find((x) => x.id === id);
   const [msg, setMsg] = useState("");
   const [ampliando, setAmpliando] = useState(null);
+  const [resorteando, setResorteando] = useState(null);
+  const [motivoRes, setMotivoRes] = useState("");
   const [premiosNuevos, setPremiosNuevos] = useState("");
   const [claim, setClaim] = useState("");
   const [showDispute, setShowDispute] = useState(false);

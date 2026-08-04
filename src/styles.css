@@ -1454,3 +1454,12 @@ body.oscuro .btn-publicar { color: #08130c; }
 .guia-inicio { padding: 11px 13px; border-color: rgba(10,107,60,.3); }
 .guia-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .guia-inicio ol { color: var(--tinta-suave); }
+
+/* Historial de repeticiones de un sorteo */
+.historial-sorteo {
+  margin-top: 14px; padding: 11px 13px; border-radius: 12px;
+  background: var(--cielo); border: 1px solid var(--linea);
+}
+.repeticion { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--linea); }
+.repeticion:first-of-type { border-top: none; padding-top: 4px; }
+.repeticion .txt-xs { line-height: 1.4; margin: 0 0 2px; }

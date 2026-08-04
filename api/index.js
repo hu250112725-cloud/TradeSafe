@@ -775,6 +775,7 @@ app.get("/api/state", authAny, async (req, res) => {
       id: g.id, hostId: g.host_id, title: g.title, description: g.description,
       prizes: g.prizes, winners: g.winners, status: g.status, minTrades: g.min_trades,
       participantes: (entriesR.rows.filter((e) => e.giveaway_id === g.id) || []).map((e) => e.user_id),
+      redraws: g.redraws || [],
       endsAt: g.ends_at, entries: g.entries, mine: g.mine, seed: g.seed, drawnAt: g.drawn_at,
     })),
     board: boardR.rows.map((b) => ({ id: b.id, byId: b.user_id, byName: b.display_name, body: b.body, at: b.created_at })),
@@ -1546,6 +1547,65 @@ app.post("/api/giveaways/:id/recalcular", auth, staff, async (req, res) => {
   await q(`UPDATE giveaways SET winners=$2 WHERE id=$1`, [gv.id, JSON.stringify(ganadores)]);
   await audit(req.me.id, "giveaway.recalculado", gv.id, `antes: ${antes} · ahora: ${ganadores.map((w) => w.name).join(", ")}`);
   res.json({ winners: ganadores });
+});
+
+/* Repetir un sorteo ya celebrado.
+   Es una medida excepcional: se guarda el resultado anterior con su semilla,
+   se exige un motivo que se publica, y se avisa a todos los participantes.
+   Así el historial completo queda a la vista y sigue siendo auditable. */
+app.post("/api/giveaways/:id/resortear", auth, admin, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  const gv = g.rows[0];
+  if (gv.status !== "drawn" || !gv.seed)
+    return err(res, "state_invalid", 409, "Solo se puede repetir un sorteo ya celebrado");
+  const motivo = String(req.body?.reason || "").trim();
+  if (motivo.length < 15)
+    return err(res, "validation_error", 422, "Explica por qué se repite (mínimo 15 caracteres). Se publicará junto al sorteo.");
+  if ((gv.redraws || []).length >= 3)
+    return err(res, "limit_reached", 429, "Este sorteo ya se repitió demasiadas veces");
+
+  const ent = await q(
+    `SELECT e.user_id, u.display_name, u.friend_code
+     FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+     WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
+  if (!ent.rowCount) return err(res, "state_invalid", 409, "Nadie participó en este sorteo");
+
+  const semilla = crypto.randomBytes(8).toString("hex");
+  const orden = unaPorPersona(ent.rows)
+    .map((p) => ({ ...p, h: crypto.createHash("sha256").update(semilla + ":" + p.user_id).digest("hex") }))
+    .sort((a, b) => a.h.localeCompare(b.h));
+  const ganadores = orden.slice(0, gv.prizes.length).map((p, i) => ({
+    userId: p.user_id, name: p.display_name, prize: gv.prizes[i], hash: p.h.slice(0, 12),
+  }));
+
+  // El resultado anterior no se borra: queda en el historial del sorteo
+  const historial = [...(gv.redraws || []), {
+    seed: gv.seed,
+    winners: (gv.winners || []).map((w) => ({ name: w.name, prize: w.prize })),
+    reason: motivo.slice(0, 300),
+    at: new Date().toISOString(),
+    by: req.me.display_name,
+  }];
+  await q(`UPDATE giveaways SET winners=$2, seed=$3, redraws=$4, drawn_at=now() WHERE id=$1`,
+    [gv.id, JSON.stringify(ganadores), semilla, JSON.stringify(historial)]);
+  await audit(req.me.id, "giveaway.resorteado", gv.id, `${motivo} · nueva semilla ${semilla}`);
+
+  // Todos se enteran, no solo los nuevos ganadores
+  await q(`INSERT INTO announcements (title, body, level, created_by, expires_at)
+           VALUES ($1,$2,'warning',$3, now() + interval '7 days')`,
+    ["Se repitió el sorteo: " + String(gv.title).slice(0, 45),
+     `Motivo: ${motivo}. Nuevos ganadores: ${ganadores.map((w) => `${w.name} (${w.prize})`).join(", ")}. ` +
+     "El resultado anterior y su semilla siguen visibles en el sorteo.",
+     req.me.id]);
+  if (pushActivo()) {
+    enviarPushVarios(ent.rows.map((p) => p.user_id), {
+      titulo: "Se repitió el sorteo",
+      cuerpo: `${gv.title}: ${motivo.slice(0, 90)}`,
+      url: "/", tag: "resorteo-" + gv.id,
+    }).catch(() => {});
+  }
+  res.json({ winners: ganadores, seed: semilla, redraws: historial.length });
 });
 
 app.post("/api/giveaways/:id/cancel", auth, staff, async (req, res) => {
