@@ -1425,6 +1425,58 @@ app.post("/api/giveaways/:id/draw", auth, staff, async (req, res) => {
   res.json({ winners: ganadores, seed: semilla });
 });
 
+/* Añadir premios a un sorteo ya celebrado.
+   Se reutiliza la MISMA semilla, así que los puestos siguientes salen del
+   orden que ya estaba fijado: el ganador original no cambia y cualquiera
+   puede comprobar que no se manipuló nada. */
+app.post("/api/giveaways/:id/ampliar", auth, staff, async (req, res) => {
+  const g = await q(`SELECT * FROM giveaways WHERE id=$1`, [req.params.id]);
+  if (!g.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado");
+  const gv = g.rows[0];
+  if (gv.status !== "drawn" || !gv.seed)
+    return err(res, "state_invalid", 409, "Solo se pueden añadir premios a un sorteo ya celebrado");
+
+  const nuevos = (Array.isArray(req.body?.prizes) ? req.body.prizes : [])
+    .map((p) => String(p).trim().slice(0, 80)).filter(Boolean).slice(0, 5);
+  if (!nuevos.length) return err(res, "validation_error", 422, "Escribe al menos un premio nuevo");
+  for (const p of nuevos) if (hasMoney(p)) return err(res, "money_offer_blocked", 422, "Los premios no pueden ser dinero real");
+
+  const ent = await q(
+    `SELECT e.user_id, u.display_name FROM giveaway_entries e JOIN users u ON u.id=e.user_id
+     WHERE e.giveaway_id=$1 AND u.status='active' ORDER BY e.id`, [gv.id]);
+  // Mismo cálculo que en el sorteo original, con la misma semilla
+  const orden = ent.rows
+    .map((p) => ({ ...p, h: crypto.createHash("sha256").update(gv.seed + ":" + p.user_id).digest("hex") }))
+    .sort((a, b) => a.h.localeCompare(b.h));
+
+  const yaGanaron = (gv.winners || []).length;
+  const premios = [...gv.prizes, ...nuevos];
+  const disponibles = orden.slice(yaGanaron, premios.length);
+  if (!disponibles.length)
+    return err(res, "state_invalid", 409, "No quedan participantes para más premios");
+
+  const extra = disponibles.map((p, i) => ({
+    userId: p.user_id, name: p.display_name, prize: nuevos[i], hash: p.h.slice(0, 12),
+  }));
+  const ganadores = [...(gv.winners || []), ...extra];
+  await q(`UPDATE giveaways SET prizes=$2, winners=$3 WHERE id=$1`,
+    [gv.id, JSON.stringify(premios), JSON.stringify(ganadores)]);
+  await audit(req.me.id, "giveaway.ampliado", gv.id, `+${extra.length} premios con la semilla original`);
+
+  await q(`INSERT INTO announcements (title, body, level, created_by, expires_at)
+           VALUES ($1,$2,'info',$3, now() + interval '7 days')`,
+    ["Más ganadores en " + String(gv.title).slice(0, 50),
+     `Se añadieron ${extra.length} ${extra.length === 1 ? "premio" : "premios"} usando la misma semilla del sorteo original: ` +
+     extra.map((w) => `${w.name} (${w.prize})`).join(", ") + ".",
+     req.me.id]);
+  if (pushActivo()) {
+    enviarPushVarios(extra.map((w) => w.userId), {
+      titulo: "¡Has ganado!", cuerpo: `${gv.title}: te ha tocado ${extra[0].prize}`, url: "/", tag: "premio-" + gv.id,
+    }).catch(() => {});
+  }
+  res.json({ winners: ganadores, nuevos: extra });
+});
+
 app.post("/api/giveaways/:id/cancel", auth, staff, async (req, res) => {
   const r = await q(`UPDATE giveaways SET status='cancelled' WHERE id=$1 AND status='open' RETURNING id`, [req.params.id]);
   if (!r.rowCount) return err(res, "not_found", 404, "Sorteo no encontrado o ya cerrado");

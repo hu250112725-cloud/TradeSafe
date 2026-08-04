@@ -62,6 +62,8 @@ export const desuscribirPush = (endpoint) => call("/push/unsubscribe", { method:
 
 export async function salirSorteo(id) { await call(`/giveaways/${id}/enter`, { method: "DELETE" }); await sync(); }
 
+export async function ampliarSorteo(id, prizes) { await call(`/giveaways/${id}/ampliar`, { method: "POST", body: { prizes } }); await sync(); }
+
 export const bootstrap = () => call("/bootstrap");
 // Escaparate para quien aún no tiene cuenta
 export async function verPublico() {

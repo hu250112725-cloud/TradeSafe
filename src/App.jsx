@@ -1345,6 +1345,8 @@ function Ayuda({ onCerrar }) {
 /* ================= Comunidad: sorteos y tablón ================= */
 function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
   const [msg, setMsg] = useState("");
+  const [ampliando, setAmpliando] = useState(null);
+  const [premiosNuevos, setPremiosNuevos] = useState("");
   const [crear, setCrear] = useState(false);
   const [f, setF] = useState({ days: 7, minTrades: 0 });
   const { run, busy, err } = useRun(refresh);
@@ -1453,6 +1455,24 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                   </>
                 )}
 
+                {ampliando === g.id && (
+                  <div className="ficha mt-14" style={{ borderColor: "var(--verde)" }}>
+                    <Campo label={tx().lblPremiosNuevos}>
+                      <textarea value={premiosNuevos} onChange={(e) => setPremiosNuevos(e.target.value)}
+                        placeholder={"2 shinys a elección\n1 shiny a elección"} rows={3} />
+                    </Campo>
+                    <p className="txt-xs suave" style={{ marginBottom: 10 }}>{tx().ampliarTxt}</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn mini" disabled={busy || !premiosNuevos.trim()}
+                        onClick={() => run(async () => {
+                          await api.ampliarSorteo(g.id, premiosNuevos.split("\n").map((x) => x.trim()).filter(Boolean));
+                          setAmpliando(null); setPremiosNuevos("");
+                        })}>{tx().ampliarSorteo}</button>
+                      <button className="btn mini secundario" onClick={() => setAmpliando(null)}>{tx().btnCancelar}</button>
+                    </div>
+                  </div>
+                )}
+
                 {g.status === "drawn" && g.seed && (
                   <div className="verificable">
                     <span className="eyebrow">{tx().comprobable}</span>
@@ -1481,6 +1501,13 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
                     </>
                   )}
                   {!abierto && <span className="txt-xs suave">{g.drawnAt ? fecha(g.drawnAt) : ""}</span>}
+                  {!abierto && esStaff && g.status === "drawn" && (
+                    ampliando === g.id ? null : (
+                      <button className="btn mini secundario" onClick={() => { setAmpliando(g.id); setPremiosNuevos(""); }}>
+                        {tx().ampliarSorteo}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
             );
@@ -1496,6 +1523,8 @@ function Comunidad({ me, refresh, esStaff, onFicha, onOffenders }) {
 function ChatDirecto({ hilo, me, refresh, onVolver, onFicha }) {
   const t = api.snap.dm.find((x) => x.id === hilo);
   const [msg, setMsg] = useState("");
+  const [ampliando, setAmpliando] = useState(null);
+  const [premiosNuevos, setPremiosNuevos] = useState("");
   const [offsite, setOffsite] = useState(null);
   const [reportando, setReportando] = useState(false);
   const [motivo, setMotivo] = useState("");
@@ -2193,6 +2222,8 @@ function ClaveChip({ clave }) {
 function TradeView({ trade: id, me, refresh, onBack }) {
   const t = api.snap.trades.find((x) => x.id === id);
   const [msg, setMsg] = useState("");
+  const [ampliando, setAmpliando] = useState(null);
+  const [premiosNuevos, setPremiosNuevos] = useState("");
   const [claim, setClaim] = useState("");
   const [showDispute, setShowDispute] = useState(false);
   const [offsitePend, setOffsitePend] = useState(null);
