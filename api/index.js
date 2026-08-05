@@ -64,8 +64,12 @@ const noSilenciado = async (req, res, next) => {
   return err(res, "muted", 403, `Tienes el envío de mensajes y publicaciones bloqueado temporalmente${hasta ? " hasta el " + hasta : ""}. Motivo: ${r.rows[0].summary}`);
 };
 
-const needsPerfil = (req, res, next) => (req.me.trainer_name && req.me.friend_code) ? next()
-  : err(res, "profile_incomplete", 403, "Completa tu nombre de entrenador y tu clave de amigo para poder operar");
+/* Sin nombre de entrenador y clave de amigo no se puede intercambiar.
+   El staff queda exento: modera y responde dudas, no necesita jugar. */
+const needsPerfil = (req, res, next) =>
+  (req.me.trainer_name && req.me.friend_code) || ["moderator", "admin"].includes(req.me.role)
+    ? next()
+    : err(res, "profile_incomplete", 403, "Completa tu nombre de entrenador y tu clave de amigo para poder operar");
 
 const needsEmail = (req, res, next) => req.me.email_verified !== false ? next()
   : err(res, "email_unverified", 403, "Confirma tu email para poder operar (revisa tu bandeja de entrada)");
